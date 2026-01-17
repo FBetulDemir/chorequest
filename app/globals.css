@@ -1,26 +1,95 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --cq-bg: #fbf6ff;
+  --cq-card: #ffffff;
+  --cq-border: rgba(17, 24, 39, 0.08);
+  --cq-text: #111827;
+  --cq-muted: #6b7280;
+
+  --cq-purple: #a855f7;
+  --cq-pink: #ec4899;
+
+  --cq-chip: rgba(168, 85, 247, 0.12);
+  --cq-chip-text: #7c3aed;
+
+  --cq-shadow: 0 12px 40px rgba(17, 24, 39, 0.08);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--cq-text);
+  background:
+    radial-gradient(
+      900px 500px at 15% 0%,
+      rgba(168, 85, 247, 0.1),
+      transparent 60%
+    ),
+    radial-gradient(
+      900px 500px at 85% 0%,
+      rgba(236, 72, 153, 0.1),
+      transparent 60%
+    ),
+    var(--cq-bg);
+}
+
+@layer components {
+  .cq-container {
+    @apply mx-auto max-w-5xl px-6;
+  }
+
+  .cq-card {
+    background: var(--cq-card);
+    border: 1px solid var(--cq-border);
+    border-radius: 16px;
+    box-shadow: var(--cq-shadow);
+  }
+
+  .cq-card-soft {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--cq-border);
+    border-radius: 16px;
+  }
+
+  .cq-title {
+    @apply text-xl font-semibold;
+  }
+
+  .cq-subtitle {
+    @apply text-sm text-gray-500;
+  }
+
+  .cq-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition;
+    border: 1px solid var(--cq-border);
+    background: white;
+  }
+
+  .cq-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition;
+    background: linear-gradient(90deg, var(--cq-purple), var(--cq-pink));
+    box-shadow: 0 10px 22px rgba(168, 85, 247, 0.25);
+  }
+
+  .cq-pill {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium;
+    background: var(--cq-chip);
+    color: var(--cq-chip-text);
+  }
+
+  .cq-input {
+    @apply w-full rounded-xl border p-3 text-sm outline-none;
+    border-color: var(--cq-border);
+    background: white;
+  }
+
+  .cq-divider {
+    border-top: 1px solid var(--cq-border);
+  }
 }
