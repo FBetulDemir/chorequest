@@ -1,3 +1,4 @@
+// app/plan/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -5,21 +6,18 @@ import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
 import { listChoreTemplates } from "@/src/lib/chores";
-import type { ChoreTemplate, Frequency } from "@/src/types";
-import {
-  formatDateShort,
-  listRecentCompletions,
-  nextDueDates,
-} from "@/src/lib/plan";
+import { listLedgerEntries } from "@/src/lib/points";
+import type {
+  ChoreTemplate,
+  Frequency,
+  PointsLedgerEntry,
+} from "@/src/lib/types";
+import { buildOccurrences } from "@/src/lib/schedule";
+import { buildStatusByOccurrence } from "@/src/lib/ledgerHelpers";
 
-const tabs: Frequency[] = ["daily", "weekly", "monthly", "seasonal"];
+type ViewMode = "upcoming" | "completed";
 
-const tabLabel: Record<Frequency, string> = {
-  daily: "Daily",
-  weekly: "Weekly",
-  monthly: "Monthly",
-  seasonal: "Seasonal",
-};
+const freqTabs: Frequency[] = ["daily", "weekly", "monthly", "seasonal"];
 
 export default function PlanPage() {
   return (
@@ -34,234 +32,214 @@ function PlanInner() {
   const uid = user!.uid;
 
   const [householdId, setHouseholdId] = useState<string | null>(null);
-
-  const [tab, setTab] = useState<Frequency>("daily");
   const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
+  const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [completed, setCompleted] = useState<
-    {
-      id: string;
-      title?: string;
-      icon?: string;
-      points?: number;
-      completedAt?: number;
-      completedByName?: string;
-    }[]
-  >([]);
-  const [completedErr, setCompletedErr] = useState<string | null>(null);
+  const [freq, setFreq] = useState<Frequency>("weekly");
+  const [mode, setMode] = useState<ViewMode>("upcoming");
 
-  // load household id
   useEffect(() => {
-    (async () => {
+    async function boot() {
       const p = await getUserProfile(uid);
       setHouseholdId(p?.householdId ?? null);
-    })();
+    }
+    boot();
   }, [uid]);
 
-  // load templates
+  async function refresh(hid: string) {
+    setError(null);
+    setLoading(true);
+    try {
+      const [t, e] = await Promise.all([
+        listChoreTemplates(hid),
+        listLedgerEntries(hid, 5000),
+      ]);
+      setTemplates(t);
+      setLedger(e);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!householdId) return;
-
-    (async () => {
-      setErr(null);
-      setLoading(true);
-      try {
-        const list = await listChoreTemplates(householdId);
-        setTemplates(list);
-      } catch (e: any) {
-        setErr(e?.message ?? "Failed to load chores");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    refresh(householdId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId]);
 
-  // load completed for this tab
-  useEffect(() => {
-    if (!householdId) return;
+  const statusByKey = useMemo(() => buildStatusByOccurrence(ledger), [ledger]);
 
-    (async () => {
-      setCompletedErr(null);
-      try {
-        const items = await listRecentCompletions(householdId, tab, 10);
-        setCompleted(items);
-      } catch (e: any) {
-        // This often fails if your completion docs don’t have "frequency" or you need an index.
-        setCompleted([]);
-        setCompletedErr(
-          e?.message ??
-            "Could not load completed items (check completion collection name / fields).",
-        );
-      }
-    })();
-  }, [householdId, tab]);
+  // Horizon: next 30 days
+  const occurrences = useMemo(
+    () => buildOccurrences(templates, Date.now(), 30),
+    [templates],
+  );
 
-  const upcoming = useMemo(() => {
-    const active = templates.filter((t) => t.active !== false);
-    const filtered = active.filter((t) => t.frequency === tab);
+  const filtered = useMemo(() => {
+    const relevant = occurrences.filter((o) => o.chore.frequency === freq);
 
-    // produce a flat list of next occurrences
-    const occurrences = filtered.flatMap((t) =>
-      nextDueDates(t, 3).map((ms) => ({
-        templateId: t.id,
-        title: t.title,
-        icon: (t as any).icon as string | undefined,
-        points: t.points,
-        assigneeMode: t.assigneeMode,
-        dueAt: ms,
-      })),
-    );
+    if (mode === "upcoming") {
+      return relevant.filter((o) => {
+        const k = `${o.templateId}__${o.dayKey}`;
+        const st = statusByKey.get(k);
+        if (!st) return true;
+        if (st.skipped) return false;
+        return st.completed <= 0;
+      });
+    }
 
-    // sort by date
-    occurrences.sort((a, b) => a.dueAt - b.dueAt);
+    // completed
+    return relevant.filter((o) => {
+      const k = `${o.templateId}__${o.dayKey}`;
+      const st = statusByKey.get(k);
+      return Boolean(st && st.completed > 0);
+    });
+  }, [occurrences, freq, mode, statusByKey]);
 
-    // cap
-    return occurrences.slice(0, 12);
-  }, [templates, tab]);
+  const counts = useMemo(() => {
+    const base = { upcoming: 0, completed: 0 };
+    const relevant = occurrences.filter((o) => o.chore.frequency === freq);
+    for (const o of relevant) {
+      const k = `${o.templateId}__${o.dayKey}`;
+      const st = statusByKey.get(k);
+      const completed = Boolean(st && st.completed > 0);
+      const skipped = Boolean(st && st.skipped);
 
-  if (!householdId) {
-    return <div className="text-sm text-gray-500">Loading household…</div>;
-  }
+      if (completed) base.completed += 1;
+      else if (!skipped) base.upcoming += 1;
+    }
+    return base;
+  }, [occurrences, freq, statusByKey]);
+
+  if (!householdId)
+    return <div className="p-6 text-sm text-gray-500">Loading household…</div>;
 
   return (
     <div className="space-y-5">
-      <div className="cq-card p-5">
-        <div className="cq-title">Chore Calendar</div>
-        <div className="cq-subtitle">
-          Plan and organize your household tasks
-        </div>
-        {err ? <div className="mt-2 text-sm text-red-600">{err}</div> : null}
-      </div>
-
-      {/* Tabs */}
-      <div className="cq-card p-3">
-        <div className="grid grid-cols-4 gap-2">
-          {tabs.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={
-                "rounded-xl border px-3 py-3 text-sm " +
-                (tab === t ? "text-white" : "bg-white")
-              }
-              style={
-                tab === t
-                  ? {
-                      background:
-                        "linear-gradient(90deg, var(--cq-purple), var(--cq-pink))",
-                      borderColor: "transparent",
-                    }
-                  : { borderColor: "var(--cq-border)" }
-              }>
-              {tabLabel[t]}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Upcoming */}
-      <div className="cq-card p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-gray-800">Upcoming</div>
-            <div className="text-xs text-gray-500">
-              Next scheduled chores for this category
-            </div>
+      <div className="cq-card p-5 flex items-start justify-between">
+        <div>
+          <div className="cq-title">Plan</div>
+          <div className="cq-subtitle">
+            Upcoming and completed chores by frequency
           </div>
-          {loading ? (
-            <div className="text-xs text-gray-500">Loading…</div>
-          ) : null}
+        </div>
+        <div className="text-sm text-gray-500">Horizon: next 30 days</div>
+      </div>
+
+      {error ? <div className="text-sm text-red-600">{error}</div> : null}
+      {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
+
+      {/* Frequency tabs */}
+      <div className="grid grid-cols-4 gap-3">
+        {freqTabs.map((f) => (
+          <TabButton key={f} active={freq === f} onClick={() => setFreq(f)}>
+            {labelFreq(f)}
+          </TabButton>
+        ))}
+      </div>
+
+      {/* Upcoming / Completed */}
+      <div className="grid grid-cols-2 gap-3">
+        <TabButton
+          active={mode === "upcoming"}
+          onClick={() => setMode("upcoming")}>
+          Upcoming ({counts.upcoming})
+        </TabButton>
+        <TabButton
+          active={mode === "completed"}
+          onClick={() => setMode("completed")}>
+          Completed ({counts.completed})
+        </TabButton>
+      </div>
+
+      <div className="cq-card p-5">
+        <div className="flex items-end justify-between">
+          <div className="text-lg font-semibold">
+            {mode === "upcoming" ? "Upcoming" : "Completed"} — {freq}
+          </div>
+          <div className="text-sm text-gray-500">{filtered.length} items</div>
         </div>
 
         <div className="mt-4 space-y-3">
-          {!loading && upcoming.length === 0 ? (
-            <div className="cq-card-soft p-4 text-sm text-gray-600">
-              No upcoming chores yet.
-            </div>
+          {filtered.length === 0 ? (
+            <div className="text-sm text-gray-500">Nothing here.</div>
           ) : null}
 
-          {upcoming.map((u, idx) => (
-            <div
-              key={`${u.templateId}-${u.dueAt}-${idx}`}
-              className="cq-card-soft p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">
-                    {u.icon ? <span className="mr-2">{u.icon}</span> : null}
-                    {u.title}
+          {filtered.map((o) => {
+            const key = `${o.templateId}__${o.dayKey}`;
+            return (
+              <div key={key} className="cq-card-soft p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold">{o.chore.title}</div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {humanDayLabel(o.dayKey)} • {o.chore.assigneeMode}
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {formatDateShort(u.dueAt)} • {tab} • {u.assigneeMode}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="cq-pill">🪙 {u.points} pts</span>
-                  <button className="cq-btn" type="button" disabled>
-                    Complete
-                  </button>
-                  <button className="cq-btn" type="button" disabled>
-                    Skip
-                  </button>
+                  <div className="cq-pill">🪙 {o.chore.points}</div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
-      {/* Completed */}
-      <div className="cq-card p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-gray-800">Completed</div>
-            <div className="text-xs text-gray-500">
-              Recently completed chores for this category
-            </div>
-          </div>
-        </div>
-
-        {completedErr ? (
-          <div className="mt-3 text-xs text-amber-700">
-            {completedErr}
-            <div className="mt-1 text-[11px] text-amber-700/80">
-              Tip: open <code>src/lib/plan.ts</code> and set{" "}
-              <code>COMPLETIONS_COLLECTION</code> to the collection your Today
-              page uses.
-            </div>
-          </div>
-        ) : null}
-
-        <div className="mt-4 space-y-2">
-          {completed.length === 0 ? (
-            <div className="cq-card-soft p-4 text-sm text-gray-600">
-              No completed chores yet.
-            </div>
-          ) : null}
-
-          {completed.map((c) => (
-            <div key={c.id} className="cq-card-soft p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">
-                    {c.icon ? <span className="mr-2">{c.icon}</span> : null}
-                    {c.title ?? "Chore"}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {c.completedAt ? formatDateShort(c.completedAt) : ""}{" "}
-                    {c.completedByName ? `• ${c.completedByName}` : ""}
-                  </div>
-                </div>
-
-                <div className="cq-pill">+{Number(c.points ?? 0)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="flex justify-end">
+        <button
+          className="cq-btn"
+          onClick={() => refresh(householdId)}
+          disabled={loading}>
+          Refresh
+        </button>
       </div>
     </div>
   );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        "rounded-2xl border px-5 py-4 text-center text-sm transition " +
+        (active ? "text-white" : "bg-white")
+      }
+      style={
+        active
+          ? {
+              background:
+                "linear-gradient(90deg, var(--cq-purple), var(--cq-pink))",
+              borderColor: "transparent",
+            }
+          : { borderColor: "var(--cq-border)" }
+      }>
+      {children}
+    </button>
+  );
+}
+
+function labelFreq(f: Frequency) {
+  if (f === "daily") return "Daily";
+  if (f === "weekly") return "Weekly";
+  if (f === "monthly") return "Monthly";
+  return "Seasonal";
+}
+
+// If your dayKey is already formatted like YYYY-MM-DD, we keep it.
+// If you want prettier labels later, we can do that in styling step.
+function humanDayLabel(dayKey: string) {
+  return dayKey;
 }

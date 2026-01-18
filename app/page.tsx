@@ -32,6 +32,12 @@ function HomeInner() {
         <div className="mt-6 grid gap-3">
           <Link
             className="rounded-xl border p-4 hover:bg-gray-50"
+            href="/history">
+            History
+          </Link>
+
+          <Link
+            className="rounded-xl border p-4 hover:bg-gray-50"
             href="/chores">
             Chores
           </Link>

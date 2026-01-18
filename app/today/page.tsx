@@ -1,3 +1,4 @@
+// src/app/today/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -42,7 +43,7 @@ function TodayInner() {
     try {
       const [t, e] = await Promise.all([
         listChoreTemplates(hid),
-        listLedgerEntries(hid, 500),
+        listLedgerEntries(hid, 1200),
       ]);
       setTemplates(t);
       setLedger(e);
@@ -61,18 +62,46 @@ function TodayInner() {
 
   const dkToday = useMemo(() => dayKeyFromTs(Date.now()), []);
 
-  const completedToday = useMemo(() => {
-    return ledger.filter((x) => x.dayKey === dkToday && x.delta > 0);
-  }, [ledger, dkToday]);
+  const todayEntries = useMemo(
+    () => ledger.filter((x) => x.dayKey === dkToday),
+    [ledger, dkToday],
+  );
 
-  const completedKeySet = useMemo(() => {
-    const s = new Set<string>();
+  const completedToday = useMemo(() => {
+    return todayEntries.filter(
+      (x) =>
+        String(x.reason ?? "").startsWith("Completed:") && Number(x.delta) > 0,
+    );
+  }, [todayEntries]);
+
+  const pointsEarned = useMemo(() => {
+    // net points today: completions + undo (negative)
+    return todayEntries.reduce((sum, e) => {
+      const r = String(e.reason ?? "");
+      if (!r.startsWith("Completed:") && !r.startsWith("Undo:")) return sum;
+      return sum + Number(e.delta ?? 0);
+    }, 0);
+  }, [todayEntries]);
+
+  // Net status per (templateId__dayKey)
+  const statusByKey = useMemo(() => {
+    const map = new Map<string, { completed: number; skipped: boolean }>();
+
     for (const e of ledger) {
       if (!e.templateId || !e.dayKey) continue;
-      if (e.delta <= 0) continue;
-      s.add(`${e.templateId}__${e.dayKey}`);
+      const key = `${e.templateId}__${e.dayKey}`;
+      const cur = map.get(key) ?? { completed: 0, skipped: false };
+
+      const r = String(e.reason ?? "");
+      if (r.startsWith("Completed:") && Number(e.delta ?? 0) > 0)
+        cur.completed += 1;
+      if (r.startsWith("Undo:") && Number(e.delta ?? 0) < 0) cur.completed -= 1;
+      if (r.startsWith("Skipped:")) cur.skipped = true;
+
+      map.set(key, cur);
     }
-    return s;
+
+    return map;
   }, [ledger]);
 
   const occurrences = useMemo(
@@ -83,18 +112,26 @@ function TodayInner() {
   const dueToday = useMemo(() => {
     return occurrences
       .filter((o) => o.bucket === "today")
-      .filter((o) => !completedKeySet.has(`${o.templateId}__${o.dayKey}`));
-  }, [occurrences, completedKeySet]);
+      .filter((o) => {
+        const key = `${o.templateId}__${o.dayKey}`;
+        const st = statusByKey.get(key);
+        if (!st) return true;
+        if (st.skipped) return false;
+        return st.completed <= 0;
+      });
+  }, [occurrences, statusByKey]);
 
   const next3 = useMemo(() => {
     return occurrences
       .filter((o) => o.bucket === "next3")
-      .filter((o) => !completedKeySet.has(`${o.templateId}__${o.dayKey}`));
-  }, [occurrences, completedKeySet]);
-
-  const pointsEarned = useMemo(() => {
-    return completedToday.reduce((sum, e) => sum + e.delta, 0);
-  }, [completedToday]);
+      .filter((o) => {
+        const key = `${o.templateId}__${o.dayKey}`;
+        const st = statusByKey.get(key);
+        if (!st) return true;
+        if (st.skipped) return false;
+        return st.completed <= 0;
+      });
+  }, [occurrences, statusByKey]);
 
   async function complete(
     templateId: string,
@@ -108,6 +145,13 @@ function TodayInner() {
     setBusyKey(key);
 
     try {
+      // prevents double-complete for same templateId+dayKey
+      const st = statusByKey.get(key);
+      if (st && st.completed > 0) {
+        setError("Already completed for this day.");
+        return;
+      }
+
       await addLedgerEntry(householdId, {
         actorUid: uid,
         delta: chore.points,
@@ -117,10 +161,46 @@ function TodayInner() {
         dayKey,
       });
 
-      const e = await listLedgerEntries(householdId, 500);
+      const e = await listLedgerEntries(householdId, 1200);
       setLedger(e);
     } catch (e: any) {
       setError(e?.message ?? "Failed to complete");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function skip(
+    templateId: string,
+    dayKey: string,
+    chore: ChoreTemplate,
+  ) {
+    if (!householdId) return;
+
+    const key = `${templateId}__${dayKey}`;
+    setError(null);
+    setBusyKey(key);
+
+    try {
+      const st = statusByKey.get(key);
+      if (st?.skipped) {
+        setError("Already skipped for this day.");
+        return;
+      }
+
+      await addLedgerEntry(householdId, {
+        actorUid: uid,
+        delta: 0,
+        reason: `Skipped: ${chore.title}`,
+        createdAt: Date.now(),
+        templateId,
+        dayKey,
+      });
+
+      const e = await listLedgerEntries(householdId, 1200);
+      setLedger(e);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to skip");
     } finally {
       setBusyKey(null);
     }
@@ -202,6 +282,7 @@ function TodayInner() {
                 points={o.chore.points}
                 busy={busyKey === key}
                 onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
+                onSkip={() => skip(o.templateId, o.dayKey, o.chore)}
               />
             );
           })}
@@ -224,6 +305,7 @@ function TodayInner() {
                 points={o.chore.points}
                 busy={busyKey === key}
                 onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
+                onSkip={() => skip(o.templateId, o.dayKey, o.chore)}
               />
             );
           })}
@@ -241,7 +323,7 @@ function TodayInner() {
               key={e.id}
               className="cq-card-soft p-3 flex items-center justify-between">
               <div className="text-sm">
-                {e.reason.replace("Completed: ", "")}
+                {String(e.reason ?? "").replace("Completed: ", "")}
               </div>
               <div className="cq-pill">+{e.delta}</div>
             </div>
@@ -297,12 +379,14 @@ function OccurrenceCard({
   points,
   busy,
   onComplete,
+  onSkip,
 }: {
   title: string;
   subtitle: string;
   points: number;
   busy: boolean;
   onComplete: () => void;
+  onSkip: () => void;
 }) {
   return (
     <div className="cq-card-soft p-4">
@@ -321,7 +405,11 @@ function OccurrenceCard({
           disabled={busy}>
           {busy ? "…" : `✓ Complete (+${points} pts)`}
         </button>
-        <button className="cq-btn w-24" type="button">
+        <button
+          className="cq-btn w-24"
+          type="button"
+          onClick={onSkip}
+          disabled={busy}>
           Skip
         </button>
       </div>

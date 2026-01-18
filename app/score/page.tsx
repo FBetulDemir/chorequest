@@ -1,3 +1,4 @@
+// app/score/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -5,11 +6,11 @@ import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
 import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
-import {
-  computeLeaderboardFromLedger,
-  rangeLabel,
-  type RangeKey,
-} from "@/src/lib/score";
+import { listLedgerEntries } from "@/src/lib/points";
+import type { PointsLedgerEntry } from "@/src/types";
+import { getRangeMs, type RangeKey } from "@/src/lib/ledgerHelpers";
+
+type Row = { uid: string; name: string; points: number; chores: number };
 
 export default function ScorePage() {
   return (
@@ -25,13 +26,10 @@ function ScoreInner() {
 
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
+  const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
   const [range, setRange] = useState<RangeKey>("month");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [rows, setRows] = useState<
-    { uid: string; name: string; points: number; chores: number }[]
-  >([]);
 
   useEffect(() => {
     async function boot() {
@@ -49,29 +47,75 @@ function ScoreInner() {
 
   useEffect(() => {
     if (!householdId) return;
-    if (members.length === 0) return;
 
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const board = await computeLeaderboardFromLedger({
-          householdId,
-          members: members.map((m) => ({ uid: m.uid, name: m.name })),
-          range,
-          limit: 2000,
-        });
-        setRows(board);
+        const e = await listLedgerEntries(householdId, 5000);
+        setLedger(e);
       } catch (e: any) {
         setError(e?.message ?? "Failed to load score");
-        setRows([]);
       } finally {
         setLoading(false);
       }
     }
 
     load();
-  }, [householdId, range, members]);
+  }, [householdId]);
+
+  const rows = useMemo(() => {
+    const { startMs, endMs } = getRangeMs(range);
+
+    // Only count completed entries by createdAt in the selected range
+    const completionEvents = ledger.filter((e) => {
+      const t = Number(e.createdAt ?? 0);
+      if (!(t >= startMs && t < endMs)) return false;
+      const reason = String(e.reason ?? "");
+      const delta = Number(e.delta ?? 0);
+      return reason.startsWith("Completed:") && delta > 0;
+    });
+
+    const byUid = new Map<string, { points: number; chores: number }>();
+    for (const e of completionEvents) {
+      const who = String(e.actorUid ?? "");
+      const cur = byUid.get(who) ?? { points: 0, chores: 0 };
+      cur.points += Number(e.delta ?? 0);
+      cur.chores += 1;
+      byUid.set(who, cur);
+    }
+
+    const nameOf = (u: string) =>
+      members.find((m) => m.uid === u)?.name ?? "Member";
+
+    const computed: Row[] = [];
+
+    // include all members (even 0)
+    for (const m of members) {
+      const v = byUid.get(m.uid) ?? { points: 0, chores: 0 };
+      computed.push({
+        uid: m.uid,
+        name: m.name,
+        points: v.points,
+        chores: v.chores,
+      });
+    }
+
+    // also include any actorUid not in members (edge case)
+    for (const [u, v] of byUid.entries()) {
+      if (!computed.some((r) => r.uid === u)) {
+        computed.push({
+          uid: u,
+          name: nameOf(u),
+          points: v.points,
+          chores: v.chores,
+        });
+      }
+    }
+
+    computed.sort((a, b) => b.points - a.points);
+    return computed;
+  }, [ledger, members, range]);
 
   const champion = rows[0];
 
@@ -79,7 +123,7 @@ function ScoreInner() {
 
   return (
     <div className="space-y-6">
-      {/* header gradient card (your style) */}
+      {/* header gradient card */}
       <div
         className="cq-card overflow-hidden"
         style={{
@@ -113,13 +157,13 @@ function ScoreInner() {
       {/* tabs */}
       <div className="grid grid-cols-3 gap-3">
         <TabButton active={range === "week"} onClick={() => setRange("week")}>
-          {rangeLabel("week")}
+          This Week
         </TabButton>
         <TabButton active={range === "month"} onClick={() => setRange("month")}>
-          {rangeLabel("month")}
+          This Month
         </TabButton>
         <TabButton active={range === "all"} onClick={() => setRange("all")}>
-          {rangeLabel("all")}
+          All Time
         </TabButton>
       </div>
 
@@ -190,7 +234,8 @@ function TabButton({
       style={
         active
           ? {
-              background: "linear-gradient(90deg, #A855F7, #EC4899)",
+              background:
+                "linear-gradient(90deg, var(--cq-purple), var(--cq-pink))",
               borderColor: "transparent",
             }
           : { borderColor: "var(--cq-border)" }

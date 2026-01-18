@@ -17,10 +17,9 @@ export function rangeLabel(k: RangeKey) {
 }
 
 function startOfWeekMs(now = Date.now()) {
-  // Monday start
   const d = new Date(now);
   const day = d.getDay(); // 0=Sun
-  const diff = day === 0 ? 6 : day - 1;
+  const diff = day === 0 ? 6 : day - 1; // Monday start
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - diff);
   return d.getTime();
@@ -39,9 +38,15 @@ function rangeStartMs(k: RangeKey) {
   return 0;
 }
 
+function isScoringEntry(e: PointsLedgerEntry) {
+  const r = String(e.reason ?? "");
+  // Score only cares about completions and their undo.
+  return r.startsWith("Completed:") || r.startsWith("Undo:");
+}
+
 function isCompletionEntry(e: PointsLedgerEntry) {
-  // your Today page uses delta > 0 and reason starts with "Completed:"
-  return Number(e.delta) > 0 && String(e.reason ?? "").startsWith("Completed:");
+  const r = String(e.reason ?? "");
+  return r.startsWith("Completed:") && Number(e.delta ?? 0) > 0;
 }
 
 export async function computeLeaderboardFromLedger(params: {
@@ -51,29 +56,32 @@ export async function computeLeaderboardFromLedger(params: {
   limit?: number;
 }): Promise<ScoreRow[]> {
   const { householdId, members, range } = params;
-  const lim = params.limit ?? 2000;
+  const lim = params.limit ?? 3000;
 
   const since = rangeStartMs(range);
-
   const entries = await listLedgerEntries(householdId, lim);
 
   const totals = new Map<string, { points: number; chores: number }>();
 
   for (const e of entries) {
-    if (!isCompletionEntry(e)) continue;
-
     const t = Number(e.createdAt ?? 0);
     if (since > 0 && t > 0 && t < since) continue;
 
     const u = String(e.actorUid ?? "");
     if (!u) continue;
 
-    const pts = Number(e.delta ?? 0);
-    const prev = totals.get(u) ?? { points: 0, chores: 0 };
-    totals.set(u, { points: prev.points + pts, chores: prev.chores + 1 });
+    if (isScoringEntry(e)) {
+      const pts = Number(e.delta ?? 0);
+      const prev = totals.get(u) ?? { points: 0, chores: 0 };
+      totals.set(u, { points: prev.points + pts, chores: prev.chores });
+    }
+
+    if (isCompletionEntry(e)) {
+      const prev = totals.get(u) ?? { points: 0, chores: 0 };
+      totals.set(u, { points: prev.points, chores: prev.chores + 1 });
+    }
   }
 
-  // ensure everyone appears
   const rows: ScoreRow[] = members.map((m) => {
     const t = totals.get(m.uid);
     return {
