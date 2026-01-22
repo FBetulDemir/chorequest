@@ -1,97 +1,101 @@
-import { listLedgerEntries } from "@/src/lib/points";
-import type { PointsLedgerEntry } from "@/src/types";
-
-export type ScoreRow = {
-  uid: string;
-  name: string;
-  points: number;
-  chores: number;
-};
+// src/lib/ledgerHelpers.ts
+import type { PointsLedgerEntry } from "@/src/lib/types";
 
 export type RangeKey = "week" | "month" | "all";
 
-export function rangeLabel(k: RangeKey) {
-  if (k === "week") return "This Week";
-  if (k === "month") return "This Month";
-  return "All Time";
-}
+export type OccurrenceStatus = {
+  completed: number; // net completion count
+  skipped: boolean;
+  lastAt: number; // last activity timestamp
+};
 
-function startOfWeekMs(now = Date.now()) {
-  const d = new Date(now);
-  const day = d.getDay(); // 0=Sun
-  const diff = day === 0 ? 6 : day - 1; // Monday start
+export function startOfLocalDayMs(ts: number): number {
+  const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - diff);
   return d.getTime();
 }
 
-function startOfMonthMs(now = Date.now()) {
-  const d = new Date(now);
+// Monday as start of week (Sweden standard)
+export function startOfLocalWeekMs(ts: number): number {
+  const d = new Date(ts);
+  const day = d.getDay(); // 0 Sun ... 6 Sat
+  const daysSinceMonday = (day + 6) % 7;
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - daysSinceMonday);
+  return d.getTime();
+}
+
+export function startOfLocalMonthMs(ts: number): number {
+  const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
   d.setDate(1);
   return d.getTime();
 }
 
-function rangeStartMs(k: RangeKey) {
-  if (k === "week") return startOfWeekMs();
-  if (k === "month") return startOfMonthMs();
-  return 0;
-}
+/**
+ * Returns [startMs, endMs) for filtering ledger entries by createdAt.
+ * endMs is "now" by default (good enough for live views).
+ */
+export function getRangeMs(
+  range: RangeKey,
+  nowMs: number = Date.now(),
+): { startMs: number; endMs: number } {
+  if (range === "all") return { startMs: 0, endMs: nowMs };
 
-function isScoringEntry(e: PointsLedgerEntry) {
-  const r = String(e.reason ?? "");
-  // Score only cares about completions and their undo.
-  return r.startsWith("Completed:") || r.startsWith("Undo:");
-}
-
-function isCompletionEntry(e: PointsLedgerEntry) {
-  const r = String(e.reason ?? "");
-  return r.startsWith("Completed:") && Number(e.delta ?? 0) > 0;
-}
-
-export async function computeLeaderboardFromLedger(params: {
-  householdId: string;
-  members: { uid: string; name: string }[];
-  range: RangeKey;
-  limit?: number;
-}): Promise<ScoreRow[]> {
-  const { householdId, members, range } = params;
-  const lim = params.limit ?? 3000;
-
-  const since = rangeStartMs(range);
-  const entries = await listLedgerEntries(householdId, lim);
-
-  const totals = new Map<string, { points: number; chores: number }>();
-
-  for (const e of entries) {
-    const t = Number(e.createdAt ?? 0);
-    if (since > 0 && t > 0 && t < since) continue;
-
-    const u = String(e.actorUid ?? "");
-    if (!u) continue;
-
-    if (isScoringEntry(e)) {
-      const pts = Number(e.delta ?? 0);
-      const prev = totals.get(u) ?? { points: 0, chores: 0 };
-      totals.set(u, { points: prev.points + pts, chores: prev.chores });
-    }
-
-    if (isCompletionEntry(e)) {
-      const prev = totals.get(u) ?? { points: 0, chores: 0 };
-      totals.set(u, { points: prev.points, chores: prev.chores + 1 });
-    }
+  if (range === "week") {
+    return { startMs: startOfLocalWeekMs(nowMs), endMs: nowMs };
   }
 
-  const rows: ScoreRow[] = members.map((m) => {
-    const t = totals.get(m.uid);
-    return {
-      uid: m.uid,
-      name: m.name || "Member",
-      points: t?.points ?? 0,
-      chores: t?.chores ?? 0,
-    };
-  });
+  // "month"
+  return { startMs: startOfLocalMonthMs(nowMs), endMs: nowMs };
+}
 
-  rows.sort((a, b) => b.points - a.points);
-  return rows;
+/**
+ * Builds net status per occurrence key: `${templateId}__${dayKey}`
+ *
+ * Rules:
+ * - "Completed:" with delta > 0 increments completed
+ * - "Undo:" with delta < 0 decrements completed
+ * - "Skipped:" sets skipped=true
+ * - completed is clamped to >= 0
+ */
+export function buildStatusByOccurrence(
+  ledger: PointsLedgerEntry[],
+): Map<string, OccurrenceStatus> {
+  const map = new Map<string, OccurrenceStatus>();
+
+  for (const e of ledger) {
+    const templateId = (e as any).templateId;
+    const dayKey = (e as any).dayKey;
+    if (!templateId || !dayKey) continue;
+
+    const key = `${templateId}__${dayKey}`;
+    const cur =
+      map.get(key) ??
+      ({
+        completed: 0,
+        skipped: false,
+        lastAt: 0,
+      } as OccurrenceStatus);
+
+    const reason = String((e as any).reason ?? "");
+    const delta = Number((e as any).delta ?? 0);
+    const createdAt = Number((e as any).createdAt ?? 0);
+
+    if (createdAt > cur.lastAt) cur.lastAt = createdAt;
+
+    if (reason.startsWith("Completed:") && delta > 0) {
+      cur.completed += 1;
+    } else if (reason.startsWith("Undo:") && delta < 0) {
+      cur.completed -= 1;
+    } else if (reason.startsWith("Skipped:")) {
+      cur.skipped = true;
+    }
+
+    if (cur.completed < 0) cur.completed = 0;
+
+    map.set(key, cur);
+  }
+
+  return map;
 }

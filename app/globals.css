@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
   --cq-bg: #fbf6ff;
@@ -25,7 +23,7 @@ body {
 
 body {
   color: var(--cq-text);
-  background:
+  /* background:
     radial-gradient(
       900px 500px at 15% 0%,
       rgba(168, 85, 247, 0.1),
@@ -35,11 +33,11 @@ body {
       900px 500px at 85% 0%,
       rgba(236, 72, 153, 0.1),
       transparent 60%
-    ),
-    var(--cq-bg);
+    ), */
+  background-color: var(--cq-bg);
 }
 
-@layer components {
+/* @layer components {
   .cq-container {
     @apply mx-auto max-w-5xl px-6;
   }
@@ -92,4 +90,4 @@ body {
   .cq-divider {
     border-top: 1px solid var(--cq-border);
   }
-}
+} */

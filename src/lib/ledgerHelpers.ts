@@ -1,113 +1,92 @@
 // src/lib/ledgerHelpers.ts
-import type { PointsLedgerEntry } from "@/src/types";
 
-export function startOfDayMs(ts: number) {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
+// A small helper set for ledger math.
+// No imports on purpose, so it works no matter where your types live.
 
-export function endOfDayMs(ts: number) {
-  const d = new Date(ts);
-  d.setHours(23, 59, 59, 999);
-  return d.getTime();
-}
+export type RangeKey =
+  | "today"
+  | "thisWeek"
+  | "thisMonth"
+  | "allTime"
+  | "week"
+  | "month"
+  | "all";
 
-export type RangeKey = "week" | "month" | "all";
+export function getRangeMs(
+  range: RangeKey,
+  nowMs: number = Date.now(),
+): { startMs: number; endMs: number } {
+  const endMs = nowMs;
 
-export function getRangeMs(range: RangeKey) {
-  const now = new Date();
+  // normalize aliases
+  const r: RangeKey =
+    range === "week"
+      ? "thisWeek"
+      : range === "month"
+        ? "thisMonth"
+        : range === "all"
+          ? "allTime"
+          : range;
 
-  if (range === "all") {
-    return { startMs: 0, endMs: Date.now() + 1 };
+  if (r === "allTime") return { startMs: 0, endMs };
+
+  const d = new Date(nowMs);
+
+  if (r === "today") {
+    const start = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+    ).getTime();
+    return { startMs: start, endMs };
   }
 
-  if (range === "month") {
-    const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-    return { startMs: start.getTime(), endMs: end.getTime() };
+  if (r === "thisWeek") {
+    // Monday start (Sweden-style)
+    const day = d.getDay(); // 0 Sun .. 6 Sat
+    const mondayOffset = (day + 6) % 7; // Mon=0 ... Sun=6
+    const start = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate() - mondayOffset,
+    ).getTime();
+    return { startMs: start, endMs };
   }
 
-  // week (Mon-Sun)
-  const day = now.getDay(); // 0 Sun ... 6 Sat
-  const diffToMon = (day + 6) % 7; // Mon=0
-  const start = new Date(now);
-  start.setDate(now.getDate() - diffToMon);
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(start);
-  end.setDate(start.getDate() + 7);
-
-  return { startMs: start.getTime(), endMs: end.getTime() };
+  // thisMonth
+  const start = new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  return { startMs: start, endMs };
 }
 
-export function occurrenceKey(templateId: string, dayKey: string) {
-  return `${templateId}__${dayKey}`;
-}
-
-/**
- * Status per occurrence (templateId + dayKey), derived from ledger.
- * - completed: net completions count (>0 means completed)
- * - skipped: if any "Skipped:" entry exists for that occurrence
- *
- * NOTE: This intentionally allows you to "complete next3 day chores today".
- * That will count in "points earned today" (by createdAt) but still marks the
- * target occurrence dayKey as completed.
- */
-export function buildStatusByOccurrence(ledger: PointsLedgerEntry[]) {
+// For Today/Plan pages: compute net completion and skipped state per occurrence key.
+// Key format expected elsewhere: `${templateId}__${dayKey}`
+export function buildStatusByOccurrence(
+  ledger: Array<{
+    templateId?: string;
+    dayKey?: string;
+    reason?: unknown;
+    delta?: unknown;
+  }>,
+): Map<string, { completed: number; skipped: boolean }> {
   const map = new Map<string, { completed: number; skipped: boolean }>();
 
-  for (const e of ledger) {
-    if (!e.templateId || !e.dayKey) continue;
-    const k = occurrenceKey(e.templateId, e.dayKey);
-    const cur = map.get(k) ?? { completed: 0, skipped: false };
+  for (const e of ledger || []) {
+    const templateId = e.templateId ? String(e.templateId) : "";
+    const dayKey = e.dayKey ? String(e.dayKey) : "";
+    if (!templateId || !dayKey) continue;
 
-    const reason = String(e.reason ?? "");
+    const key = `${templateId}__${dayKey}`;
+    const cur = map.get(key) ?? { completed: 0, skipped: false };
+
+    const r = String(e.reason ?? "");
     const delta = Number(e.delta ?? 0);
 
-    if (reason.startsWith("Completed:") && delta > 0) cur.completed += 1;
-    if (reason.startsWith("Undo:") && delta < 0) cur.completed -= 1;
-    if (reason.startsWith("Skipped:")) cur.skipped = true;
+    if (r.startsWith("Completed:") && delta > 0) cur.completed += 1;
+    if (r.startsWith("Undo:") && delta < 0) cur.completed -= 1;
+    if (r.startsWith("Skipped:")) cur.skipped = true;
 
-    map.set(k, cur);
+    map.set(key, cur);
   }
 
   return map;
-}
-
-export function isOccurrenceCompleted(
-  status: Map<string, { completed: number; skipped: boolean }>,
-  templateId: string,
-  dayKey: string,
-) {
-  const st = status.get(occurrenceKey(templateId, dayKey));
-  return Boolean(st && st.completed > 0);
-}
-
-export function isOccurrenceSkipped(
-  status: Map<string, { completed: number; skipped: boolean }>,
-  templateId: string,
-  dayKey: string,
-) {
-  const st = status.get(occurrenceKey(templateId, dayKey));
-  return Boolean(st && st.skipped);
-}
-
-/** Entries completed within [startMs, endMs) by createdAt (what you did in that time window). */
-export function completedEntriesInTimeRange(
-  ledger: PointsLedgerEntry[],
-  startMs: number,
-  endMs: number,
-) {
-  return ledger.filter((e) => {
-    const t = Number(e.createdAt ?? 0);
-    if (!(t >= startMs && t < endMs)) return false;
-    const reason = String(e.reason ?? "");
-    const delta = Number(e.delta ?? 0);
-    return reason.startsWith("Completed:") && delta > 0;
-  });
-}
-
-export function pointsFromEntries(entries: PointsLedgerEntry[]) {
-  return entries.reduce((s, e) => s + Number(e.delta ?? 0), 0);
 }

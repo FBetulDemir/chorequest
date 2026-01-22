@@ -1,119 +1,153 @@
-import type { ChoreTemplate, Frequency } from "@/src/types";
+// src/lib/schedule.ts
+import type { ChoreTemplate } from "@/src/lib/types";
+
+export type OccurrenceBucket = "today" | "next3" | "upcoming";
 
 export type Occurrence = {
   templateId: string;
+  dayKey: string; // YYYY-MM-DD (local)
+  dateMs: number; // local midnight timestamp
+  bucket: OccurrenceBucket;
   chore: ChoreTemplate;
-  dueAt: number; // start of day timestamp
-  dayKey: string; // YYYY-MM-DD
-  bucket: "today" | "next3" | "later";
 };
 
-export function startOfDay(ts: number) {
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+// Local day key (NOT UTC)
+export function dayKeyFromTs(ts: number): string {
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth() + 1);
+  const day = pad2(d.getDate());
+  return `${y}-${m}-${day}`;
+}
+
+// Exported because Today page imports it
+export function startOfLocalDayMs(ts: number): number {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-export function dayKeyFromTs(ts: number) {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-export function addDays(ts: number, days: number) {
-  const d = new Date(ts);
+function addDaysLocal(dayStartMs: number, days: number): number {
+  const d = new Date(dayStartMs);
   d.setDate(d.getDate() + days);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-function weekDayOf(ts: number) {
-  return new Date(ts).getDay(); // 0..6
-}
+function addMonthsLocal(dayStartMs: number, months: number): number {
+  const d = new Date(dayStartMs);
+  const dayOfMonth = d.getDate();
+  d.setMonth(d.getMonth() + months);
 
-function monthDayOf(ts: number) {
-  return new Date(ts).getDate(); // 1..31
-}
-
-function clampDay28(n: number) {
-  if (n < 1) return 1;
-  if (n > 28) return 28;
-  return n;
-}
-
-function defaultWeekDay(template: ChoreTemplate) {
-  return template.schedule?.weekDay ?? weekDayOf(template.createdAt);
-}
-
-function defaultMonthDay(template: ChoreTemplate) {
-  return (
-    template.schedule?.monthDay ?? clampDay28(monthDayOf(template.createdAt))
-  );
-}
-
-function seasonalAnchor(template: ChoreTemplate) {
-  const created = new Date(template.createdAt);
-  const month = template.schedule?.seasonalMonth ?? created.getMonth() + 1; // 1..12
-  const day = template.schedule?.seasonalDay ?? clampDay28(created.getDate());
-  return { month, day };
-}
-
-function isDueOnDay(template: ChoreTemplate, dayStart: number) {
-  const freq: Frequency = template.frequency;
-
-  if (freq === "daily") return true;
-
-  if (freq === "weekly") {
-    const wd = defaultWeekDay(template);
-    return weekDayOf(dayStart) === wd;
+  // If the target month has fewer days, JS may roll forward
+  if (d.getDate() !== dayOfMonth) {
+    d.setDate(0);
   }
 
-  if (freq === "monthly") {
-    const md = defaultMonthDay(template);
-    return clampDay28(monthDayOf(dayStart)) === md;
-  }
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
 
-  if (freq === "seasonal") {
-    const { month, day } = seasonalAnchor(template);
-    const d = new Date(dayStart);
-    return (
-      d.getMonth() + 1 === month && clampDay28(d.getDate()) === clampDay28(day)
-    );
+function normalizeFreq(
+  freq: unknown,
+): "daily" | "weekly" | "monthly" | "seasonal" {
+  const f = String(freq ?? "").toLowerCase();
+  if (f === "daily" || f === "weekly" || f === "monthly" || f === "seasonal") {
+    return f;
   }
+  return "weekly";
+}
 
-  return false;
+function templateIdOf(t: any): string {
+  return String(t?.id ?? t?.templateId ?? "");
+}
+
+function bucketForIndex(i: number): OccurrenceBucket {
+  if (i === 0) return "today";
+  if (i >= 1 && i <= 3) return "next3";
+  return "upcoming";
 }
 
 export function buildOccurrences(
   templates: ChoreTemplate[],
-  fromTs: number,
-  daysForward: number,
+  nowMs: number,
+  horizonDays: number,
 ): Occurrence[] {
-  const fromDay = startOfDay(fromTs);
+  const base = startOfLocalDayMs(nowMs);
   const out: Occurrence[] = [];
 
-  for (let i = 0; i <= daysForward; i++) {
-    const day = addDays(fromDay, i);
-    const dk = dayKeyFromTs(day);
+  for (const t of templates) {
+    const tid = templateIdOf(t);
+    if (!tid) continue;
 
-    for (const t of templates) {
-      if (!t.active) continue;
-      if (isDueOnDay(t, day)) {
-        const bucket: Occurrence["bucket"] =
-          i === 0 ? "today" : i <= 3 ? "next3" : "later";
+    const freq = normalizeFreq((t as any).frequency);
 
+    if (freq === "daily") {
+      for (let i = 0; i <= horizonDays; i++) {
+        const dateMs = addDaysLocal(base, i);
         out.push({
-          templateId: t.id,
+          templateId: tid,
+          dateMs,
+          dayKey: dayKeyFromTs(dateMs),
+          bucket: bucketForIndex(i),
           chore: t,
-          dueAt: day,
-          dayKey: dk,
-          bucket,
         });
       }
+      continue;
+    }
+
+    if (freq === "weekly") {
+      for (let i = 0; i <= horizonDays; i += 7) {
+        const dateMs = addDaysLocal(base, i);
+        out.push({
+          templateId: tid,
+          dateMs,
+          dayKey: dayKeyFromTs(dateMs),
+          bucket: bucketForIndex(i),
+          chore: t,
+        });
+      }
+      continue;
+    }
+
+    if (freq === "monthly") {
+      let m = 0;
+      while (true) {
+        const dateMs = addMonthsLocal(base, m);
+        const diffDays = Math.round((dateMs - base) / 86400000);
+        if (diffDays > horizonDays) break;
+
+        out.push({
+          templateId: tid,
+          dateMs,
+          dayKey: dayKeyFromTs(dateMs),
+          bucket: bucketForIndex(diffDays),
+          chore: t,
+        });
+
+        m += 1;
+        if (m > 60) break;
+      }
+      continue;
+    }
+
+    // seasonal: every ~90 days
+    for (let i = 0; i <= horizonDays; i += 90) {
+      const dateMs = addDaysLocal(base, i);
+      out.push({
+        templateId: tid,
+        dateMs,
+        dayKey: dayKeyFromTs(dateMs),
+        bucket: bucketForIndex(i),
+        chore: t,
+      });
     }
   }
 
+  out.sort((a, b) => a.dateMs - b.dateMs);
   return out;
 }

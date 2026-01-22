@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/src/components/AuthProvider";
 import { ensureUserProfile, getUserProfile } from "@/src/lib/profile";
@@ -15,28 +15,41 @@ export default function RequireAuth({
   const pathname = usePathname();
 
   const [checkingProfile, setCheckingProfile] = useState(true);
+  const runId = useRef(0);
 
   useEffect(() => {
+    const id = ++runId.current;
+
     async function run() {
       if (loading) return;
 
       // not signed in -> login
       if (!user) {
+        setCheckingProfile(false);
         router.replace(`/login?next=${encodeURIComponent(pathname || "/")}`);
         return;
       }
 
-      // ensure profile exists, then check household
       setCheckingProfile(true);
-      await ensureUserProfile({ uid: user.uid, email: user.email ?? null });
-      const profile = await getUserProfile(user.uid);
 
-      if (!profile?.householdId) {
+      try {
+        await ensureUserProfile({ uid: user.uid, email: user.email ?? null });
+        const profile = await getUserProfile(user.uid);
+
+        // ignore if a newer run started
+        if (runId.current !== id) return;
+
+        if (!profile?.householdId) {
+          router.replace("/setup");
+          return;
+        }
+
+        setCheckingProfile(false);
+      } catch {
+        // if something fails, send to setup as safe fallback
+        if (runId.current !== id) return;
         router.replace("/setup");
-        return;
       }
-
-      setCheckingProfile(false);
     }
 
     run();

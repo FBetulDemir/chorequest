@@ -9,7 +9,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import type { PointsLedgerEntry } from "@/src/types";
+import type { PointsLedgerEntry } from "@/src/lib/types";
 
 function ledgerCol(householdId: string) {
   return collection(db, "households", householdId, "ledger");
@@ -28,7 +28,6 @@ export async function addLedgerEntry(
   return ref.id;
 }
 
-// ✅ export exists so imports like `import { listLedgerEntries } ...` work
 export async function listLedgerEntries(
   householdId: string,
   max = 200,

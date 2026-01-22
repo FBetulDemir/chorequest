@@ -7,7 +7,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import type { ChoreTemplate, Frequency } from "./types";
+import type { ChoreTemplate, Frequency } from "@/src/types";
 
 /**
  * IMPORTANT:

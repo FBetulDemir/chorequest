@@ -1,4 +1,4 @@
-// src/app/today/page.tsx
+// app/today/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -7,8 +7,12 @@ import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
 import { listChoreTemplates } from "@/src/lib/chores";
 import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
-import type { ChoreTemplate, PointsLedgerEntry } from "@/src/types";
-import { buildOccurrences, dayKeyFromTs } from "@/src/lib/schedule";
+import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
+import {
+  buildOccurrences,
+  dayKeyFromTs,
+  startOfLocalDayMs,
+} from "@/src/lib/schedule";
 
 export default function TodayPage() {
   return (
@@ -43,7 +47,7 @@ function TodayInner() {
     try {
       const [t, e] = await Promise.all([
         listChoreTemplates(hid),
-        listLedgerEntries(hid, 1200),
+        listLedgerEntries(hid, 2000),
       ]);
       setTemplates(t);
       setLedger(e);
@@ -54,36 +58,89 @@ function TodayInner() {
     }
   }
 
+  function hashStr(s: string) {
+    // small stable hash
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+
+  function dayIndexFromDayKey(dayKey: string) {
+    // dayKey is YYYY-MM-DD (local). Use noon to avoid DST edge weirdness.
+    const d = new Date(`${dayKey}T12:00:00`);
+    return Math.floor(d.getTime() / 86400000);
+  }
+
+  function getNameByUid(
+    uid: string | undefined,
+    members: { uid: string; name: string }[],
+  ) {
+    if (!uid) return null;
+    return members.find((m) => m.uid === uid)?.name ?? null;
+  }
+
+  function getAssigneeForOccurrence(
+    o: { templateId: string; dayKey: string; chore: any },
+    members: { uid: string; name: string }[],
+  ) {
+    const mode = String(o.chore?.assigneeMode ?? "anyone");
+
+    if (mode === "fixed") {
+      const name = getNameByUid(o.chore?.fixedAssigneeUid, members);
+      return name ? `🎯 ${name}` : "🎯 Fixed";
+    }
+
+    if (mode === "rotating") {
+      if (!members.length) return "🔁 Rotating";
+      const idx =
+        (hashStr(o.templateId) + dayIndexFromDayKey(o.dayKey)) % members.length;
+      return `🔁 ${members[idx].name}`;
+    }
+
+    return "👥 Anyone";
+  }
+
   useEffect(() => {
     if (!householdId) return;
     refresh(householdId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId]);
 
-  const dkToday = useMemo(() => dayKeyFromTs(Date.now()), []);
+  const nowMs = Date.now();
+  const dkToday = useMemo(() => dayKeyFromTs(nowMs), [nowMs]);
 
-  const todayEntries = useMemo(
-    () => ledger.filter((x) => x.dayKey === dkToday),
-    [ledger, dkToday],
+  // What you DID today should be based on createdAt, not dayKey
+  const todayStartMs = useMemo(() => startOfLocalDayMs(nowMs), [nowMs]);
+  const tomorrowStartMs = useMemo(
+    () => todayStartMs + 24 * 3600 * 1000,
+    [todayStartMs],
+  );
+
+  const entriesCreatedToday = useMemo(
+    () =>
+      ledger.filter((x) => {
+        const c = Number(x.createdAt ?? 0);
+        return c >= todayStartMs && c < tomorrowStartMs;
+      }),
+    [ledger, todayStartMs, tomorrowStartMs],
   );
 
   const completedToday = useMemo(() => {
-    return todayEntries.filter(
+    return entriesCreatedToday.filter(
       (x) =>
         String(x.reason ?? "").startsWith("Completed:") && Number(x.delta) > 0,
     );
-  }, [todayEntries]);
+  }, [entriesCreatedToday]);
 
   const pointsEarned = useMemo(() => {
-    // net points today: completions + undo (negative)
-    return todayEntries.reduce((sum, e) => {
+    return entriesCreatedToday.reduce((sum, e) => {
       const r = String(e.reason ?? "");
       if (!r.startsWith("Completed:") && !r.startsWith("Undo:")) return sum;
       return sum + Number(e.delta ?? 0);
     }, 0);
-  }, [todayEntries]);
+  }, [entriesCreatedToday]);
 
-  // Net status per (templateId__dayKey)
+  // Hide chores that are completed/skipped FOR THEIR dayKey
   const statusByKey = useMemo(() => {
     const map = new Map<string, { completed: number; skipped: boolean }>();
 
@@ -105,8 +162,8 @@ function TodayInner() {
   }, [ledger]);
 
   const occurrences = useMemo(
-    () => buildOccurrences(templates, Date.now(), 10),
-    [templates],
+    () => buildOccurrences(templates, nowMs, 10),
+    [templates, nowMs],
   );
 
   const dueToday = useMemo(() => {
@@ -145,7 +202,6 @@ function TodayInner() {
     setBusyKey(key);
 
     try {
-      // prevents double-complete for same templateId+dayKey
       const st = statusByKey.get(key);
       if (st && st.completed > 0) {
         setError("Already completed for this day.");
@@ -161,7 +217,7 @@ function TodayInner() {
         dayKey,
       });
 
-      const e = await listLedgerEntries(householdId, 1200);
+      const e = await listLedgerEntries(householdId, 2000);
       setLedger(e);
     } catch (e: any) {
       setError(e?.message ?? "Failed to complete");
@@ -197,7 +253,7 @@ function TodayInner() {
         dayKey,
       });
 
-      const e = await listLedgerEntries(householdId, 1200);
+      const e = await listLedgerEntries(householdId, 2000);
       setLedger(e);
     } catch (e: any) {
       setError(e?.message ?? "Failed to skip");
@@ -207,14 +263,14 @@ function TodayInner() {
   }
 
   if (!householdId)
-    return <div className="text-sm text-gray-500">Loading household…</div>;
+    return <div className="text-sm text-gray-500">Loading household...</div>;
 
   return (
     <div className="space-y-5">
       <div className="cq-card p-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="cq-title">Today’s Quest</div>
+            <div className="cq-title">Today's Quest</div>
             <div className="cq-subtitle">{new Date().toLocaleDateString()}</div>
           </div>
 
@@ -259,7 +315,9 @@ function TodayInner() {
             Refresh
           </button>
         }>
-        {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
+        {loading ? (
+          <div className="text-sm text-gray-500">Loading...</div>
+        ) : null}
 
         {!loading && dueToday.length === 0 ? (
           <div className="cq-card-soft p-8 text-center">
@@ -301,7 +359,7 @@ function TodayInner() {
               <OccurrenceCard
                 key={key}
                 title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${o.chore.assigneeMode}`}
+                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${o.chore.assigneeMode} `}
                 points={o.chore.points}
                 busy={busyKey === key}
                 onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
@@ -318,7 +376,7 @@ function TodayInner() {
             <div className="text-sm text-gray-500">No activity yet.</div>
           ) : null}
 
-          {completedToday.slice(0, 12).map((e) => (
+          {completedToday.slice(0, 20).map((e) => (
             <div
               key={e.id}
               className="cq-card-soft p-3 flex items-center justify-between">
@@ -403,7 +461,7 @@ function OccurrenceCard({
           className="cq-btn-primary flex-1"
           onClick={onComplete}
           disabled={busy}>
-          {busy ? "…" : `✓ Complete (+${points} pts)`}
+          {busy ? "..." : `✓ Complete (+${points} pts)`}
         </button>
         <button
           className="cq-btn w-24"
