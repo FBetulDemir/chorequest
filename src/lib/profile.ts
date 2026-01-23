@@ -31,7 +31,7 @@ export async function ensureUserProfile(params: {
   const profile: UserProfile = {
     uid: params.uid,
     email: params.email,
-    name: "", // will be set in /setup
+    name: "",
     householdId: null,
     createdAt: now,
     updatedAt: now,

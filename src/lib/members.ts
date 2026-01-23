@@ -1,5 +1,5 @@
 import { db } from "@/src/lib/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { getUserProfile } from "@/src/lib/profile";
 
 export type HouseholdMember = {
@@ -10,24 +10,28 @@ export type HouseholdMember = {
 export async function listHouseholdMembers(
   householdId: string,
 ): Promise<HouseholdMember[]> {
-  const col = collection(db, "households", householdId, "members");
-  const snap = await getDocs(col);
+  const ref = doc(db, "households", householdId);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) return [];
+
+  const data = snap.data() as any;
+  const membersMap = (data.members ?? {}) as Record<string, boolean>;
+  const uids = Object.keys(membersMap).filter(
+    (uid) => membersMap[uid] === true,
+  );
 
   const out: HouseholdMember[] = [];
 
-  for (const docSnap of snap.docs) {
-    const d = docSnap.data() as any;
-    const uid = (d.uid as string) ?? docSnap.id;
-
+  for (const uid of uids) {
     try {
       const p = await getUserProfile(uid);
-      out.push({ uid, name: p?.name ?? uid.slice(0, 6) });
+      out.push({ uid, name: p?.name?.trim() ? p.name : uid.slice(0, 6) });
     } catch {
       out.push({ uid, name: uid.slice(0, 6) });
     }
   }
 
-  // Optional: sort by name for nicer UI
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
 }
