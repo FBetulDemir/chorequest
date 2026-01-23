@@ -1,124 +1,160 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
-import { createHousehold, joinHouseholdByCode } from "@/src/lib/households";
-import { updateUserProfile } from "@/src/lib/profile";
-import { useRouter } from "next/navigation";
+import {
+  ensureUserProfile,
+  getUserProfile,
+  updateUserProfile,
+} from "@/src/lib/profile";
+import {
+  createHousehold,
+  joinHouseholdByCode,
+  getHousehold,
+} from "@/src/lib/households";
 
 export default function SetupPage() {
-  const { user } = useAuth();
-  const router = useRouter();
+  return (
+    <RequireAuth>
+      <SetupInner />
+    </RequireAuth>
+  );
+}
 
-  const [mode, setMode] = useState<"create" | "join">("create");
-  const [yourName, setYourName] = useState("");
-  const [householdName, setHouseholdName] = useState("ChoreQuest Home");
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
+function SetupInner() {
+  const { user } = useAuth();
+  const uid = user!.uid;
+
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
+  const [household, setHousehold] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!user) return <div className="p-6">Please sign in first.</div>;
+  // form
+  const [householdName, setHouseholdName] = useState("Our Household");
+  const [code, setCode] = useState("");
 
-  const uid = user.uid;
+  useEffect(() => {
+    let alive = true;
 
-  async function onCreate() {
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        // Ensure user doc exists
+        await ensureUserProfile({ uid, email: user?.email ?? null });
+
+        const p = await getUserProfile(uid);
+        if (!alive) return;
+        setProfile(p);
+
+        if (p?.householdId) {
+          const h = await getHousehold(p.householdId);
+          if (!alive) return;
+          setHousehold(h);
+        } else {
+          setHousehold(null);
+        }
+      } catch (e: any) {
+        if (!alive) return;
+        setError(e?.message ?? "Failed to load setup.");
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      alive = false;
+    };
+  }, [uid, user?.email]);
+
+  async function onCreateHousehold() {
     setError(null);
-    setBusy(true);
     try {
-      const hh = await createHousehold({ uid, name: householdName });
-      await updateUserProfile(uid, {
-        name: yourName.trim() || "Me",
-        householdId: hh.id,
-      });
-      alert(`Household created! Share this code with your partner: ${hh.code}`);
-      router.replace("/");
+      const h = await createHousehold({ uid, name: householdName });
+      await updateUserProfile(uid, { householdId: h.id });
+      setHousehold(h);
+      setProfile((prev: any) => ({ ...(prev ?? {}), householdId: h.id }));
     } catch (e: any) {
-      setError(e?.message ?? "Failed to create household");
-    } finally {
-      setBusy(false);
+      setError(e?.message ?? "Failed to create household.");
     }
   }
 
-  async function onJoin() {
+  async function onJoinByCode() {
     setError(null);
-    setBusy(true);
     try {
-      const hh = await joinHouseholdByCode({ uid, code });
-      await updateUserProfile(uid, {
-        name: yourName.trim() || "Partner",
-        householdId: hh.id,
-      });
-      router.replace("/");
+      const h = await joinHouseholdByCode({ uid, code });
+      await updateUserProfile(uid, { householdId: h.id });
+      setHousehold(h);
+      setProfile((prev: any) => ({ ...(prev ?? {}), householdId: h.id }));
     } catch (e: any) {
-      setError(e?.message ?? "Failed to join household");
-    } finally {
-      setBusy(false);
+      setError(e?.message ?? "Failed to join household.");
     }
   }
+
+  if (loading) return <div className="p-6 text-sm text-gray-600">Loading…</div>;
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-md rounded-xl border bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Setup</h1>
-          <button
-            className="text-sm underline"
-            onClick={() => setMode(mode === "create" ? "join" : "create")}>
-            {mode === "create" ? "I have a code" : "Create new"}
-          </button>
+    <div className="p-6 space-y-6">
+      <div className="cq-title">Household setup</div>
+
+      {error ? (
+        <div className="cq-card-soft p-3 text-sm text-red-600">{error}</div>
+      ) : null}
+
+      {profile?.householdId && household ? (
+        <div className="cq-card p-5 space-y-2">
+          <div className="font-semibold">Already connected</div>
+          <div className="text-sm text-gray-600">
+            Household: <span className="font-medium">{household.name}</span>
+          </div>
+          <div className="text-sm text-gray-600">
+            Code:{" "}
+            <span className="font-mono">{household.code ?? "(no code)"}</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            Share the code with your partner. They can join from /setup.
+          </div>
         </div>
-
-        <p className="mt-2 text-sm text-gray-600">
-          {mode === "create"
-            ? "Create a household and invite your partner with a code."
-            : "Join your partner’s household using the code."}
-        </p>
-
-        <div className="mt-5 space-y-3">
-          <input
-            className="w-full rounded-lg border p-3"
-            placeholder="Your name (e.g., Burak / Betül)"
-            value={yourName}
-            onChange={(e) => setYourName(e.target.value)}
-          />
-
-          {mode === "create" ? (
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="cq-card p-5 space-y-3">
+            <div className="font-semibold">Create household</div>
             <input
-              className="w-full rounded-lg border p-3"
-              placeholder="Household name"
+              className="cq-input"
               value={householdName}
               onChange={(e) => setHouseholdName(e.target.value)}
+              placeholder="Household name"
             />
-          ) : (
+            <button
+              className="cq-btn-primary"
+              type="button"
+              onClick={onCreateHousehold}>
+              Create household
+            </button>
+          </div>
+
+          <div className="cq-card p-5 space-y-3">
+            <div className="font-semibold">Join household</div>
             <input
-              className="w-full rounded-lg border p-3"
-              placeholder="Household code (e.g., A1B2C3)"
+              className="cq-input"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="Enter code (e.g. AB12CD)"
             />
-          )}
-
-          {error ? <div className="text-sm text-red-600">{error}</div> : null}
-
-          {mode === "create" ? (
             <button
-              className="w-full rounded-lg bg-black p-3 text-white disabled:opacity-50"
-              disabled={busy || yourName.trim().length === 0}
-              onClick={onCreate}>
-              {busy ? "Working..." : "Create household"}
+              className="cq-btn"
+              type="button"
+              onClick={onJoinByCode}
+              disabled={!code.trim()}>
+              Join by code
             </button>
-          ) : (
-            <button
-              className="w-full rounded-lg bg-black p-3 text-white disabled:opacity-50"
-              disabled={
-                busy || yourName.trim().length === 0 || code.trim().length < 4
-              }
-              onClick={onJoin}>
-              {busy ? "Working..." : "Join household"}
-            </button>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

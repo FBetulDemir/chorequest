@@ -11,7 +11,7 @@ import {
   updateChoreTemplate,
 } from "@/src/lib/chores";
 import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
-import type { AssigneeMode, ChoreTemplate, Frequency } from "@/src/types";
+import type { AssigneeMode, ChoreTemplate, Frequency } from "@/src/lib/types";
 
 const freqOrder: Frequency[] = ["daily", "weekly", "monthly", "seasonal"];
 const freqLabel: Record<Frequency, string> = {

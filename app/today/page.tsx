@@ -13,6 +13,7 @@ import {
   dayKeyFromTs,
   startOfLocalDayMs,
 } from "@/src/lib/schedule";
+import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
 
 export default function TodayPage() {
   return (
@@ -26,6 +27,7 @@ function TodayInner() {
   const { user } = useAuth();
   const uid = user!.uid;
 
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
   const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
@@ -45,12 +47,14 @@ function TodayInner() {
     setError(null);
     setLoading(true);
     try {
-      const [t, e] = await Promise.all([
+      const [t, e, m] = await Promise.all([
         listChoreTemplates(hid),
         listLedgerEntries(hid, 2000),
+        listHouseholdMembers(hid),
       ]);
       setTemplates(t);
       setLedger(e);
+      setMembers(m);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load");
     } finally {
@@ -58,15 +62,20 @@ function TodayInner() {
     }
   }
 
+  useEffect(() => {
+    if (!householdId) return;
+    refresh(householdId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [householdId]);
+
   function hashStr(s: string) {
-    // small stable hash
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return Math.abs(h);
   }
 
   function dayIndexFromDayKey(dayKey: string) {
-    // dayKey is YYYY-MM-DD (local). Use noon to avoid DST edge weirdness.
+    // Use noon to avoid DST edge weirdness.
     const d = new Date(`${dayKey}T12:00:00`);
     return Math.floor(d.getTime() / 86400000);
   }
@@ -100,16 +109,9 @@ function TodayInner() {
     return "👥 Anyone";
   }
 
-  useEffect(() => {
-    if (!householdId) return;
-    refresh(householdId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [householdId]);
-
   const nowMs = Date.now();
-  const dkToday = useMemo(() => dayKeyFromTs(nowMs), [nowMs]);
 
-  // What you DID today should be based on createdAt, not dayKey
+  // (ok to keep even if not used elsewhere; used to compute today window)
   const todayStartMs = useMemo(() => startOfLocalDayMs(nowMs), [nowMs]);
   const tomorrowStartMs = useMemo(
     () => todayStartMs + 24 * 3600 * 1000,
@@ -311,7 +313,8 @@ function TodayInner() {
           <button
             className="cq-btn"
             onClick={() => refresh(householdId)}
-            disabled={loading}>
+            disabled={loading}
+            type="button">
             Refresh
           </button>
         }>
@@ -336,7 +339,7 @@ function TodayInner() {
               <OccurrenceCard
                 key={key}
                 title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${o.chore.assigneeMode}`}
+                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${getAssigneeForOccurrence(o, members)}`}
                 points={o.chore.points}
                 busy={busyKey === key}
                 onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
@@ -359,7 +362,7 @@ function TodayInner() {
               <OccurrenceCard
                 key={key}
                 title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${o.chore.assigneeMode} `}
+                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${getAssigneeForOccurrence(o, members)}`}
                 points={o.chore.points}
                 busy={busyKey === key}
                 onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
@@ -447,27 +450,31 @@ function OccurrenceCard({
   onSkip: () => void;
 }) {
   return (
-    <div className="cq-card-soft p-4">
+    <div
+      className="cq-card-soft p-4"
+      style={{ borderColor: "var(--cq-border)" }}>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-semibold">{title}</div>
+        <div className="min-w-0">
+          <div className="font-semibold truncate">{title}</div>
           <div className="mt-1 text-xs text-gray-500">{subtitle}</div>
         </div>
-        <div className="cq-pill">🪙 {points}</div>
+        <div className="cq-pill shrink-0">🪙 {points}</div>
       </div>
 
       <div className="mt-3 flex items-center gap-2">
         <button
-          className="cq-btn-primary flex-1"
+          className="cq-btn-primary px-4 py-2 text-sm"
           onClick={onComplete}
-          disabled={busy}>
+          disabled={busy}
+          type="button">
           {busy ? "..." : `✓ Complete (+${points} pts)`}
         </button>
+
         <button
-          className="cq-btn w-24"
-          type="button"
+          className="cq-btn px-4 py-2 text-sm"
           onClick={onSkip}
-          disabled={busy}>
+          disabled={busy}
+          type="button">
           Skip
         </button>
       </div>
