@@ -1,5 +1,7 @@
 # ChoreQuest — Household Chores + Points (Next.js + Firebase)
 
+Deployed: https://chorequest-game.vercel.app/
+
 ChoreQuest is a two-person (or small household) chore tracker where recurring chores are assigned points based on difficulty. Household members can complete chores, earn points, and view a leaderboard over different time ranges.
 
 This project uses **Next.js (App Router)** and **Firebase (Auth + Firestore)**.
