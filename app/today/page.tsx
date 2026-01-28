@@ -10,7 +10,6 @@ import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
 import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
 import {
   buildOccurrences,
-  dayKeyFromTs,
   startOfLocalDayMs,
 } from "@/src/lib/schedule";
 import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
@@ -136,11 +135,13 @@ function TodayInner() {
 
   const pointsEarned = useMemo(() => {
     return entriesCreatedToday.reduce((sum, e) => {
+      // Only count points for the current user
+      if (e.actorUid !== uid) return sum;
       const r = String(e.reason ?? "");
       if (!r.startsWith("Completed:") && !r.startsWith("Undo:")) return sum;
       return sum + Number(e.delta ?? 0);
     }, 0);
-  }, [entriesCreatedToday]);
+  }, [entriesCreatedToday, uid]);
 
   // Hide chores that are completed/skipped FOR THEIR dayKey
   const statusByKey = useMemo(() => {
@@ -191,6 +192,49 @@ function TodayInner() {
         return st.completed <= 0;
       });
   }, [occurrences, statusByKey]);
+
+  // Show all non-daily chores with their next occurrence
+  const recurringChores = useMemo(() => {
+    const nonDaily = templates.filter(
+      (t) => t.frequency !== "daily" && t.active,
+    );
+
+    return nonDaily.map((chore) => {
+      // Find the next occurrence for this chore
+      const nextOcc = occurrences.find(
+        (o) => o.templateId === chore.id && o.bucket !== "today",
+      );
+
+      // Check if there's a "today" occurrence
+      const todayOcc = occurrences.find(
+        (o) => o.templateId === chore.id && o.bucket === "today",
+      );
+
+      // If there's a today occurrence and it's not completed, show that instead
+      if (todayOcc) {
+        const key = `${todayOcc.templateId}__${todayOcc.dayKey}`;
+        const st = statusByKey.get(key);
+        const isIncomplete = !st || (!st.skipped && st.completed <= 0);
+
+        if (isIncomplete) {
+          return {
+            chore,
+            nextDue: todayOcc.dayKey,
+            dueStatus: "due-today",
+            occurrence: todayOcc,
+          };
+        }
+      }
+
+      // Otherwise show the next occurrence
+      return {
+        chore,
+        nextDue: nextOcc?.dayKey ?? "Not scheduled",
+        dueStatus: nextOcc?.bucket === "next3" ? "coming-soon" : "upcoming",
+        occurrence: nextOcc,
+      };
+    });
+  }, [templates, occurrences, statusByKey]);
 
   async function complete(
     templateId: string,
@@ -288,17 +332,20 @@ function TodayInner() {
           <Stat
             title="Open"
             value={dueToday.length}
-            tone="bg-blue-50 text-blue-700"
+            icon="⏳"
+            tone="bg-blue-50 text-blue-700 border-blue-100"
           />
           <Stat
             title="Done"
             value={completedToday.length}
-            tone="bg-emerald-50 text-emerald-700"
+            icon="✓"
+            tone="bg-emerald-50 text-emerald-700 border-emerald-100"
           />
           <Stat
-            title="Next 3 Days"
+            title="Upcoming"
             value={next3.length}
-            tone="bg-purple-50 text-purple-700"
+            icon="📅"
+            tone="bg-purple-50 text-purple-700 border-purple-100"
           />
         </div>
 
@@ -323,10 +370,10 @@ function TodayInner() {
         ) : null}
 
         {!loading && dueToday.length === 0 ? (
-          <div className="cq-card-soft p-8 text-center">
-            <div className="text-2xl">🎉</div>
-            <div className="mt-2 font-semibold">All caught up!</div>
-            <div className="text-sm text-gray-500">
+          <div className="cq-card p-8 text-center">
+            <div className="text-6xl mb-4">🎉✨</div>
+            <div className="text-xl font-bold text-gray-900">All caught up!</div>
+            <div className="text-sm text-gray-500 mt-2">
               No chores due today. Enjoy your free time!
             </div>
           </div>
@@ -373,22 +420,123 @@ function TodayInner() {
         </div>
       </Section>
 
+      <Section title="🔁 Recurring Chores">
+        <div className="space-y-3">
+          {recurringChores.length === 0 ? (
+            <div className="text-sm text-gray-500">
+              No weekly, monthly, or seasonal chores.
+            </div>
+          ) : null}
+
+          {recurringChores.map((item) => {
+            const dueStatusEmoji =
+              item.dueStatus === "due-today"
+                ? "🔥"
+                : item.dueStatus === "coming-soon"
+                  ? "📅"
+                  : "🗓️";
+
+            const dueStatusText =
+              item.dueStatus === "due-today"
+                ? "Due today!"
+                : item.dueStatus === "coming-soon"
+                  ? "Coming soon"
+                  : "Scheduled";
+
+            // If due today, allow marking complete
+            if (item.occurrence && item.dueStatus === "due-today") {
+              const key = `${item.occurrence.templateId}__${item.occurrence.dayKey}`;
+              return (
+                <OccurrenceCard
+                  key={key}
+                  title={item.chore.title}
+                  subtitle={`${item.nextDue} • ${item.chore.frequency} • ${getAssigneeForOccurrence(item.occurrence, members)}`}
+                  points={item.chore.points}
+                  busy={busyKey === key}
+                  onComplete={() =>
+                    complete(
+                      item.occurrence!.templateId,
+                      item.occurrence!.dayKey,
+                      item.occurrence!.chore,
+                    )
+                  }
+                  onSkip={() =>
+                    skip(
+                      item.occurrence!.templateId,
+                      item.occurrence!.dayKey,
+                      item.occurrence!.chore,
+                    )
+                  }
+                />
+              );
+            }
+
+            // Otherwise just show info
+            return (
+              <div
+                key={item.chore.id}
+                className="cq-card-soft p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="text-2xl">{dueStatusEmoji}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-sm truncate">
+                      {item.chore.title}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {dueStatusText} • Next: {item.nextDue} •{" "}
+                      {item.chore.frequency} •{" "}
+                      {item.occurrence
+                        ? getAssigneeForOccurrence(item.occurrence, members)
+                        : "Not scheduled"}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold shrink-0">
+                  <span>🪙</span>
+                  <span>{item.chore.points}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
       <Section title="✅ Completed Today">
         <div className="space-y-2">
           {completedToday.length === 0 ? (
             <div className="text-sm text-gray-500">No activity yet.</div>
           ) : null}
 
-          {completedToday.slice(0, 20).map((e) => (
-            <div
-              key={e.id}
-              className="cq-card-soft p-3 flex items-center justify-between">
-              <div className="text-sm">
-                {String(e.reason ?? "").replace("Completed: ", "")}
+          {completedToday.slice(0, 20).map((e) => {
+            const actorName =
+              members.find((m) => m.uid === e.actorUid)?.name ?? "Someone";
+            const time = new Date(Number(e.createdAt ?? 0)).toLocaleTimeString(
+              [],
+              { hour: "2-digit", minute: "2-digit" },
+            );
+
+            return (
+              <div
+                key={e.id}
+                className="cq-card-soft p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="text-2xl">✓</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-sm truncate">
+                      {String(e.reason ?? "").replace("Completed: ", "")}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Completed by {actorName} • {time}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0">
+                  <span>+{e.delta}</span>
+                  <span>pts</span>
+                </div>
               </div>
-              <div className="cq-pill">+{e.delta}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Section>
     </div>
@@ -405,12 +553,12 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="cq-card-soft p-5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="font-semibold">{title}</div>
+        <div className="text-lg font-semibold text-gray-900">{title}</div>
         {right ?? null}
       </div>
-      <div className="mt-4">{children}</div>
+      <div>{children}</div>
     </div>
   );
 }
@@ -418,18 +566,21 @@ function Section({
 function Stat({
   title,
   value,
+  icon,
   tone,
 }: {
   title: string;
   value: number;
+  icon?: string;
   tone: string;
 }) {
   return (
-    <div
-      className={"rounded-xl border p-4 " + tone}
-      style={{ borderColor: "var(--cq-border)" }}>
-      <div className="text-xs opacity-80">{title}</div>
-      <div className="text-xl font-semibold">{value}</div>
+    <div className={"rounded-xl border p-4 " + tone}>
+      <div className="flex items-center justify-between">
+        <div className="text-xs opacity-80 font-medium">{title}</div>
+        {icon ? <div className="text-lg">{icon}</div> : null}
+      </div>
+      <div className="text-2xl font-bold mt-2">{value}</div>
     </div>
   );
 }
@@ -450,20 +601,31 @@ function OccurrenceCard({
   onSkip: () => void;
 }) {
   return (
-    <div
-      className="cq-card-soft p-4"
-      style={{ borderColor: "var(--cq-border)" }}>
+    <div className="cq-card p-4 hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-semibold truncate">{title}</div>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-base truncate">{title}</div>
           <div className="mt-1 text-xs text-gray-500">{subtitle}</div>
         </div>
-        <div className="cq-pill shrink-0">🪙 {points}</div>
+        <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold shrink-0">
+          <span>🪙</span>
+          <span>{points}</span>
+        </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2">
         <button
-          className="cq-btn-primary px-4 py-2 text-sm"
+          className="
+  w-full inline-flex items-center justify-center gap-2
+  rounded-xl px-4 py-3 text-sm font-semibold text-white
+  bg-gradient-to-r from-emerald-500 to-green-500
+  shadow-sm shadow-emerald-200/50
+  hover:from-emerald-600 hover:to-green-600
+  hover:shadow-md hover:shadow-emerald-200/60
+  active:scale-[0.98]
+  transition-all duration-150
+  disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-sm
+"
           onClick={onComplete}
           disabled={busy}
           type="button">
@@ -471,7 +633,17 @@ function OccurrenceCard({
         </button>
 
         <button
-          className="cq-btn px-4 py-2 text-sm"
+          className="
+  inline-flex items-center justify-center gap-2
+  rounded-xl px-4 py-3 text-sm font-medium
+  bg-white text-gray-700
+  border border-gray-200
+  shadow-sm
+  hover:bg-gray-50 hover:text-gray-900
+  active:scale-[0.98]
+  transition-all duration-150
+  disabled:opacity-60 disabled:cursor-not-allowed
+"
           onClick={onSkip}
           disabled={busy}
           type="button">

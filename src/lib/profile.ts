@@ -5,10 +5,14 @@ import type { UserProfile } from "@/src/lib/types";
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const ref = doc(db, "users", uid);
   const snap = await getDoc(ref);
-  if (!snap.exists()) return null;
+
+  if (!snap.exists()) {
+    return null;
+  }
 
   const d = snap.data() as any;
-  return {
+
+  const profile = {
     uid,
     email: d.email ?? null,
     name: d.name ?? "",
@@ -16,6 +20,8 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     createdAt: Number(d.createdAt ?? Date.now()),
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };
+
+  return profile;
 }
 
 export async function ensureUserProfile(params: {

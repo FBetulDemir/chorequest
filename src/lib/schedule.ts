@@ -100,34 +100,56 @@ export function buildOccurrences(
       continue;
     }
 
+    // For non-daily chores, anchor to the chore's createdAt date
+    const anchor = startOfLocalDayMs(Number(t.createdAt ?? nowMs));
+
     if (freq === "weekly") {
-      for (let i = 0; i <= horizonDays; i += 7) {
-        const dateMs = addDaysLocal(base, i);
-        out.push({
-          templateId: tid,
-          dateMs,
-          dayKey: dayKeyFromTs(dateMs),
-          bucket: bucketForIndex(i),
-          chore: t,
-        });
+      // Generate occurrences every 7 days from anchor
+      let weekCount = 0;
+      while (true) {
+        const dateMs = addDaysLocal(anchor, weekCount * 7);
+        const diffDays = Math.round((dateMs - base) / 86400000);
+
+        // Stop if we've gone beyond the horizon
+        if (diffDays > horizonDays) break;
+
+        // Only include if this occurrence is today or in the future
+        if (diffDays >= 0) {
+          out.push({
+            templateId: tid,
+            dateMs,
+            dayKey: dayKeyFromTs(dateMs),
+            bucket: bucketForIndex(diffDays),
+            chore: t,
+          });
+        }
+
+        weekCount += 1;
+        if (weekCount > 52) break; // Safety limit: 1 year
       }
       continue;
     }
 
     if (freq === "monthly") {
+      // Generate occurrences monthly from anchor
       let m = 0;
       while (true) {
-        const dateMs = addMonthsLocal(base, m);
+        const dateMs = addMonthsLocal(anchor, m);
         const diffDays = Math.round((dateMs - base) / 86400000);
+
+        // Stop if we've gone beyond the horizon
         if (diffDays > horizonDays) break;
 
-        out.push({
-          templateId: tid,
-          dateMs,
-          dayKey: dayKeyFromTs(dateMs),
-          bucket: bucketForIndex(diffDays),
-          chore: t,
-        });
+        // Only include if this occurrence is today or in the future
+        if (diffDays >= 0) {
+          out.push({
+            templateId: tid,
+            dateMs,
+            dayKey: dayKeyFromTs(dateMs),
+            bucket: bucketForIndex(diffDays),
+            chore: t,
+          });
+        }
 
         m += 1;
         if (m > 60) break;
@@ -135,16 +157,28 @@ export function buildOccurrences(
       continue;
     }
 
-    // seasonal: every ~90 days
-    for (let i = 0; i <= horizonDays; i += 90) {
-      const dateMs = addDaysLocal(base, i);
-      out.push({
-        templateId: tid,
-        dateMs,
-        dayKey: dayKeyFromTs(dateMs),
-        bucket: bucketForIndex(i),
-        chore: t,
-      });
+    // seasonal: every ~90 days from anchor
+    let seasonCount = 0;
+    while (true) {
+      const dateMs = addDaysLocal(anchor, seasonCount * 90);
+      const diffDays = Math.round((dateMs - base) / 86400000);
+
+      // Stop if we've gone beyond the horizon
+      if (diffDays > horizonDays) break;
+
+      // Only include if this occurrence is today or in the future
+      if (diffDays >= 0) {
+        out.push({
+          templateId: tid,
+          dateMs,
+          dayKey: dayKeyFromTs(dateMs),
+          bucket: bucketForIndex(diffDays),
+          chore: t,
+        });
+      }
+
+      seasonCount += 1;
+      if (seasonCount > 4) break; // Safety limit: ~1 year
     }
   }
 

@@ -1,14 +1,15 @@
-import { db } from "@/src/lib/firebase";
+import { auth, db } from "@/src/lib/firebase";
 import {
   collection,
   doc,
   getDoc,
   getDocs,
   query,
+  setDoc,
+  updateDoc,
   where,
-  writeBatch,
 } from "firebase/firestore";
-import type { Household } from "@/src/types";
+import type { Household } from "@/src/lib/types";
 import { ensureUserProfile } from "@/src/lib/profile";
 
 function randomCode(len = 6) {
@@ -27,12 +28,26 @@ function userRef(uid: string) {
   return doc(db, "users", uid);
 }
 
+function requireAuthUid(): string {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error("Not signed in.");
+  return uid;
+}
+
 export async function createHousehold(params: {
   uid: string;
   name: string;
   email?: string | null;
 }): Promise<Household> {
-  await ensureUserProfile({ uid: params.uid, email: params.email ?? null });
+  const authUid = requireAuthUid();
+  if (params.uid !== authUid) {
+    console.warn("createHousehold: params.uid != auth.uid", {
+      paramsUid: params.uid,
+      authUid,
+    });
+  }
+
+  await ensureUserProfile({ uid: authUid, email: params.email ?? null });
 
   const hidRef = doc(collection(db, "households"));
   const now = Date.now();
@@ -43,28 +58,36 @@ export async function createHousehold(params: {
     code: randomCode(6),
     createdAt: now,
     updatedAt: now,
-    members: { [params.uid]: true } as any,
+    members: { [authUid]: true } as any,
   };
 
-  const batch = writeBatch(db);
-  batch.set(hidRef, household);
+  // Create household
+  await setDoc(hidRef, household);
 
-  // ✅ keep profile in sync
-  batch.update(userRef(params.uid), {
+  // Sync user profile
+  await updateDoc(userRef(authUid), {
     householdId: hidRef.id,
     updatedAt: now,
   });
 
-  await batch.commit();
   return household;
 }
 
 export async function joinHouseholdByCode(params: {
   uid: string;
   code: string;
-  email?: string | null;
 }): Promise<Household> {
-  await ensureUserProfile({ uid: params.uid, email: params.email ?? null });
+  const authUid = requireAuthUid();
+
+  if (params.uid !== authUid) {
+    console.warn(
+      "joinHouseholdByCode: params.uid != auth.uid (THIS CAUSES RULE FAILS)",
+      {
+        paramsUid: params.uid,
+        authUid,
+      },
+    );
+  }
 
   const code = params.code.trim().toUpperCase();
 
@@ -76,21 +99,39 @@ export async function joinHouseholdByCode(params: {
   const hid = d.id;
   const now = Date.now();
 
-  const batch = writeBatch(db);
+  // 1) Household membership update
+  try {
+    await updateDoc(householdRef(hid), {
+      [`members.${authUid}`]: true,
+      updatedAt: now,
+    });
+    console.log("✅ household membership updated", { hid, authUid });
+  } catch (e: any) {
+    console.error("❌ FAILED household update", {
+      hid,
+      authUid,
+      code: e?.code,
+      message: e?.message,
+    });
+    throw e;
+  }
 
-  // ✅ old model membership
-  batch.update(householdRef(hid), {
-    [`members.${params.uid}`]: true,
-    updatedAt: now,
-  });
-
-  // ✅ critical: set user householdId
-  batch.update(userRef(params.uid), {
-    householdId: hid,
-    updatedAt: now,
-  });
-
-  await batch.commit();
+  // 2) User profile householdId update
+  try {
+    await updateDoc(userRef(authUid), {
+      householdId: hid,
+      updatedAt: now,
+    });
+    console.log("✅ user profile householdId updated", { authUid, hid });
+  } catch (e: any) {
+    console.error("❌ FAILED user update", {
+      authUid,
+      hid,
+      code: e?.code,
+      message: e?.message,
+    });
+    throw e;
+  }
 
   const updated = await getHousehold(hid);
   if (!updated) throw new Error("Household disappeared after join.");

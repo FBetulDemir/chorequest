@@ -1,7 +1,7 @@
 // app/setup/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import {
@@ -77,6 +77,9 @@ function SetupInner() {
     setError(null);
     try {
       await updateUserProfile(uid, { name: name.trim() });
+
+      // Reload the page to clear Firestore cache and show updated name everywhere
+      window.location.reload();
     } catch (e: any) {
       setError(e?.message ?? "Failed to save name");
     } finally {
@@ -132,18 +135,25 @@ function SetupInner() {
 
       {/* Name */}
       <div className="cq-card-soft p-5 space-y-3">
-        <div className="text-sm font-medium text-gray-700">Your name</div>
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium text-gray-700">Your name</div>
+          {!name.trim() ? (
+            <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+              Required
+            </span>
+          ) : null}
+        </div>
         <input
           className="cq-input"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Betul"
+          placeholder="e.g., Betul or Burak"
         />
         <div className="flex items-center gap-2">
           <button
-            className="cq-btn"
+            className="cq-btn-primary"
             type="button"
-            disabled={busy === "name"}
+            disabled={busy === "name" || !name.trim()}
             onClick={saveName}>
             {busy === "name" ? "Saving..." : "Save name"}
           </button>

@@ -237,28 +237,66 @@ function PlanInner() {
         ) : null}
 
         {!loading && visible.length === 0 ? (
-          <div className="text-sm text-gray-500">Nothing here.</div>
+          <div className="cq-card p-8 text-center">
+            <div className="text-5xl mb-3">📭</div>
+            <div className="font-semibold text-gray-700">Nothing here</div>
+            <div className="text-sm text-gray-500 mt-1">
+              No {view === "completed" ? "completed" : "upcoming"} chores in this
+              frequency
+            </div>
+          </div>
         ) : null}
 
         <div className="space-y-3">
           {visible.map((o) => {
             const key = `${o.templateId}__${o.dayKey}`;
+            const date = new Date(o.dueMs);
+            const isToday =
+              date.toDateString() === new Date().toDateString();
+            const isTomorrow =
+              date.toDateString() ===
+              new Date(Date.now() + 86400000).toDateString();
+
             return (
-              <div key={key} className="cq-card-soft p-4">
+              <div
+                key={key}
+                className={
+                  "cq-card p-4 transition-shadow hover:shadow-md " +
+                  (isToday ? "border-l-4 border-l-emerald-500" : "")
+                }>
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold">
-                      {o.chore.title}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="truncate font-semibold text-base">
+                        {o.chore.title}
+                      </div>
+                      {isToday ? (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-700">
+                          Today
+                        </span>
+                      ) : isTomorrow ? (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700">
+                          Tomorrow
+                        </span>
+                      ) : null}
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {o.dayKey} • {String(o.chore.frequency)} •{" "}
-                      {String(o.chore.assigneeMode)}
+                    <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-gray-500">
+                      <span>📅 {o.dayKey}</span>
+                      <span>•</span>
+                      <span className="capitalize">
+                        {String(o.chore.frequency)}
+                      </span>
+                      <span>•</span>
+                      <span className="capitalize">
+                        {String(o.chore.assigneeMode)}
+                      </span>
                     </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
-                    <div className="cq-pill">
-                      🪙 {Number(o.chore.points ?? 0)}
+                    <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">
+                      <span>🪙</span>
+                      <span>{Number(o.chore.points ?? 0)}</span>
                     </div>
                   </div>
                 </div>

@@ -8,7 +8,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 
 import { auth, db } from "@/src/lib/firebase";
 import type { UserProfile } from "@/src/lib/types";
-import type { Household } from "@/src/types";
+import type { Household } from "@/src/lib/types";
 
 export default function RequireAuth({
   children,
@@ -92,7 +92,7 @@ export default function RequireAuth({
       return;
     }
 
-    // ✅ CRITICAL FIX: if householdId is null, we MUST NOT stay "loading".
+    //  if householdId is null, we MUST NOT stay "loading".
     if (!profile.householdId) {
       setHousehold(null);
       setHouseholdLoading(false);
@@ -144,8 +144,8 @@ export default function RequireAuth({
       return;
     }
 
-    // ✅ Allow /setup with no household
-    if (profile && !profile.householdId && pathname !== "/setup") {
+    //  Allow /setup with no household or no name
+    if (profile && (!profile.householdId || !profile.name?.trim()) && pathname !== "/setup") {
       router.replace("/setup");
       return;
     }
@@ -165,15 +165,14 @@ export default function RequireAuth({
   // If logged out, redirect effect will run; show a small placeholder.
   if (!user) return <p style={{ padding: 24 }}>Redirecting…</p>;
 
-  // ✅ Key behavior:
-  // - If no householdId AND we're on /setup -> render children (setup page can show join form)
-  // - If household exists -> render children
-  if (profile && !profile.householdId && pathname === "/setup") {
+  // - If no householdId or no name AND we're on /setup -> render children (setup page can show name + join form)
+  // - If household exists and name is set -> render children
+  if (profile && (!profile.householdId || !profile.name?.trim()) && pathname === "/setup") {
     return <>{children}</>;
   }
 
-  // For all other routes, require household.
-  if (profile && !profile.householdId)
+  // For all other routes, require household and name.
+  if (profile && (!profile.householdId || !profile.name?.trim()))
     return <p style={{ padding: 24 }}>Redirecting…</p>;
 
   return <>{children}</>;

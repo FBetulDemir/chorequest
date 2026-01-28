@@ -1,4 +1,4 @@
-import type { ChoreTemplate, PointsLedgerEntry } from "@/src/types";
+import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
 import type { HouseholdMember } from "@/src/lib/members";
 
 /**

@@ -37,7 +37,7 @@ body {
   background-color: var(--cq-bg);
 }
 
-/* @layer components {
+@layer components {
   .cq-container {
     @apply mx-auto max-w-5xl px-6;
   }
@@ -69,10 +69,27 @@ body {
     background: white;
   }
 
+  .cq-btn:hover {
+    @apply bg-gray-50;
+  }
+
+  .cq-btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
   .cq-btn-primary {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition;
     background: linear-gradient(90deg, var(--cq-purple), var(--cq-pink));
     box-shadow: 0 10px 22px rgba(168, 85, 247, 0.25);
+  }
+
+  .cq-btn-primary:hover {
+    @apply shadow-lg;
+    transform: translateY(-1px);
+  }
+
+  .cq-btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
   }
 
   .cq-pill {
@@ -87,7 +104,11 @@ body {
     background: white;
   }
 
+  .cq-input:focus {
+    @apply ring-2 ring-purple-200 border-purple-300;
+  }
+
   .cq-divider {
     border-top: 1px solid var(--cq-border);
   }
-} */
+}

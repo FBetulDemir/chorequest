@@ -26,8 +26,9 @@ export async function listHouseholdMembers(
   for (const uid of uids) {
     try {
       const p = await getUserProfile(uid);
-      out.push({ uid, name: p?.name?.trim() ? p.name : uid.slice(0, 6) });
-    } catch {
+      const finalName = p?.name?.trim() ? p.name : uid.slice(0, 6);
+      out.push({ uid, name: finalName });
+    } catch (err) {
       out.push({ uid, name: uid.slice(0, 6) });
     }
   }

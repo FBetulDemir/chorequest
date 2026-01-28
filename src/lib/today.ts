@@ -1,4 +1,4 @@
-import type { ChoreTemplate } from "@/src/types";
+import type { ChoreTemplate } from "@/src/lib/types";
 
 /**
  * Part 4 simple logic:

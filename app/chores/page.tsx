@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
@@ -61,6 +61,97 @@ const icons = [
   "🛒",
 ];
 
+// Starter chore templates for new households
+const starterChores = [
+  // Daily
+  {
+    icon: "🍽️",
+    title: "Do Dishes",
+    points: 20,
+    frequency: "daily" as Frequency,
+    assigneeMode: "rotating" as AssigneeMode,
+  },
+  {
+    icon: "🧹",
+    title: "Sweep Kitchen Floor",
+    points: 10,
+    frequency: "daily" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+  {
+    icon: "🗑️",
+    title: "Take Out Trash",
+    points: 10,
+    frequency: "daily" as Frequency,
+    assigneeMode: "rotating" as AssigneeMode,
+  },
+  {
+    icon: "🪴",
+    title: "Water Plants",
+    points: 10,
+    frequency: "daily" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+  // Weekly
+  {
+    icon: "🧺",
+    title: "Do Laundry",
+    points: 30,
+    frequency: "weekly" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+  {
+    icon: "🧹",
+    title: "Vacuum Living Room",
+    points: 30,
+    frequency: "weekly" as Frequency,
+    assigneeMode: "rotating" as AssigneeMode,
+  },
+  {
+    icon: "🛁",
+    title: "Clean Bathroom",
+    points: 40,
+    frequency: "weekly" as Frequency,
+    assigneeMode: "rotating" as AssigneeMode,
+  },
+  {
+    icon: "🪟",
+    title: "Wipe Windows",
+    points: 30,
+    frequency: "weekly" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+  {
+    icon: "🛏️",
+    title: "Change Bed Sheets",
+    points: 20,
+    frequency: "weekly" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+  // Monthly
+  {
+    icon: "🛒",
+    title: "Grocery Shopping",
+    points: 40,
+    frequency: "monthly" as Frequency,
+    assigneeMode: "rotating" as AssigneeMode,
+  },
+  {
+    icon: "🚗",
+    title: "Wash Car",
+    points: 30,
+    frequency: "monthly" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+  {
+    icon: "🧊",
+    title: "Defrost Freezer",
+    points: 40,
+    frequency: "monthly" as Frequency,
+    assigneeMode: "anyone" as AssigneeMode,
+  },
+];
+
 export default function ChoresPage() {
   return (
     <RequireAuth>
@@ -83,6 +174,7 @@ function ChoresInner() {
 
   // modal
   const [open, setOpen] = useState(false);
+  const [editingChore, setEditingChore] = useState<ChoreTemplate | null>(null);
 
   // toast
   const [toast, setToast] = useState<string | null>(null);
@@ -104,7 +196,9 @@ function ChoresInner() {
       if (hid) {
         const mem = await listHouseholdMembers(hid);
         setMembers(mem);
-        setFixedUid(mem.find((m) => m.uid === uid)?.uid ?? mem[0]?.uid ?? "");
+        // Set default to current user if they're in members, otherwise first member
+        const defaultMember = mem.find((m) => m.uid === uid) ?? mem[0];
+        setFixedUid(defaultMember?.uid ?? "");
       }
     }
     load();
@@ -114,8 +208,13 @@ function ChoresInner() {
     setError(null);
     setLoading(true);
     try {
-      const data = await listChoreTemplates(hid);
+      // Load both chores and members to ensure member names are available
+      const [data, mem] = await Promise.all([
+        listChoreTemplates(hid),
+        listHouseholdMembers(hid),
+      ]);
       setItems(data);
+      setMembers(mem);
     } catch (e: any) {
       setError(e?.message ?? "Failed to load chores");
     } finally {
@@ -140,11 +239,37 @@ function ChoresInner() {
     return map as Record<Frequency, ChoreTemplate[]>;
   }, [items]);
 
-  async function createAndSave() {
+  async function openEditMode(chore: ChoreTemplate) {
+    // Extract icon and title from chore.title (format: "🪴 Water Plants")
+    const titleParts = chore.title.split(" ");
+    const extractedIcon = titleParts[0];
+    const extractedTitle = titleParts.slice(1).join(" ");
+
+    setEditingChore(chore);
+    setIcon(extractedIcon);
+    setTitle(extractedTitle);
+    setPoints(chore.points);
+    setFrequency(chore.frequency);
+    setAssigneeMode(chore.assigneeMode);
+    setFixedUid(chore.fixedAssigneeUid ?? fixedUid);
+    setOpen(true);
+  }
+
+  function openCreateMode() {
+    setEditingChore(null);
+    setIcon("🪴");
+    setTitle("");
+    setPoints(30);
+    setFrequency("weekly");
+    setAssigneeMode("anyone");
+    setOpen(true);
+  }
+
+  async function saveChore() {
     if (!householdId) return;
     if (!title.trim()) return;
 
-    setBusy("create");
+    setBusy(editingChore?.id ?? "create");
     setError(null);
 
     try {
@@ -155,36 +280,99 @@ function ChoresInner() {
             ? "Rotating"
             : "Anyone";
 
-      // Save to Firestore
-      await createChoreTemplate(householdId, {
-        // store icon in title (simple + no type conflicts)
+      // Validate fixedUid exists in members if mode is fixed
+      let validFixedUid = fixedUid || uid;
+      if (assigneeMode === "fixed") {
+        const memberExists = members.some((m) => m.uid === validFixedUid);
+        if (!memberExists) {
+          // Fallback to current user if the selected member doesn't exist
+          validFixedUid = uid;
+        }
+      }
+
+      const choreData = {
         title: `${icon} ${title.trim()}`,
         points,
         frequency,
         assigneeMode,
         active: true,
-        ...(assigneeMode === "fixed"
-          ? { fixedAssigneeUid: fixedUid || uid }
-          : {}),
-        // schedule exists in DB even if empty
+        ...(assigneeMode === "fixed" ? { fixedAssigneeUid: validFixedUid } : {}),
         schedule: {},
-      } as any);
+      } as any;
+
+      if (editingChore) {
+        // Update existing chore
+        await updateChoreTemplate(householdId, editingChore.id, choreData);
+        setToast(`Updated: "${icon} ${title.trim()}"`);
+      } else {
+        // Create new chore
+        await createChoreTemplate(householdId, choreData);
+        setToast(
+          `Created: "${icon} ${title.trim()}" (${points} pts • ${frequency} • ${who})`,
+        );
+      }
 
       await refresh(householdId);
-
-      setToast(
-        `Saved: "${icon} ${title.trim()}" (${points} pts • ${frequency} • ${who})`,
-      );
       window.setTimeout(() => setToast(null), 2200);
 
       // reset + close
       setOpen(false);
+      setEditingChore(null);
       setTitle("");
       setPoints(30);
       setFrequency("weekly");
       setAssigneeMode("anyone");
     } catch (e: any) {
-      setError(e?.message ?? "Failed to create chore (check Firestore rules)");
+      setError(e?.message ?? "Failed to save chore (check Firestore rules)");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Check if starter chores have been loaded by looking for matching titles
+  const hasStarterChores = useMemo(() => {
+    if (items.length === 0) return false;
+
+    // Check if at least 3 starter chore titles exist in current chores
+    const starterTitles = starterChores.map(
+      (s) => `${s.icon} ${s.title}`,
+    );
+    const matchCount = items.filter((item) =>
+      starterTitles.includes(item.title),
+    ).length;
+
+    // If we have at least 3 matching starter chores, consider them loaded
+    return matchCount >= 3;
+  }, [items]);
+
+  async function loadStarterChores() {
+    if (!householdId) return;
+    if (hasStarterChores) {
+      setToast("Starter chores already loaded!");
+      window.setTimeout(() => setToast(null), 2200);
+      return;
+    }
+
+    setBusy("starter");
+    setError(null);
+
+    try {
+      for (const starter of starterChores) {
+        await createChoreTemplate(householdId, {
+          title: `${starter.icon} ${starter.title}`,
+          points: starter.points,
+          frequency: starter.frequency,
+          assigneeMode: starter.assigneeMode,
+          active: true,
+          schedule: {},
+        } as any);
+      }
+
+      await refresh(householdId);
+      setToast(`Added ${starterChores.length} starter chores! 🎉`);
+      window.setTimeout(() => setToast(null), 2200);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load starter chores");
     } finally {
       setBusy(null);
     }
@@ -230,23 +418,43 @@ function ChoresInner() {
 
   return (
     <div className="space-y-5">
-      <div className="cq-card p-5 flex items-center justify-between">
-        <div>
-          <div className="cq-title">Chore Templates</div>
-          <div className="cq-subtitle">
-            Manage your recurring household tasks
+      <div className="cq-card p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="cq-title">Chore Templates</div>
+            <div className="cq-subtitle">
+              Manage your recurring household tasks
+            </div>
+            {error ? (
+              <div className="mt-2 text-sm text-red-600">{error}</div>
+            ) : null}
           </div>
-          {error ? (
-            <div className="mt-2 text-sm text-red-600">{error}</div>
-          ) : null}
-        </div>
 
-        <button
-          className="cq-btn-primary"
-          onClick={() => setOpen(true)}
-          type="button">
-          ➕ New Chore
-        </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              className="cq-btn text-xs whitespace-nowrap"
+              onClick={loadStarterChores}
+              disabled={busy === "starter" || hasStarterChores}
+              type="button"
+              title={
+                hasStarterChores
+                  ? "Starter chores already loaded"
+                  : "Add 12 common household chores"
+              }>
+              {busy === "starter"
+                ? "Loading..."
+                : hasStarterChores
+                  ? "✓ Starter Chores Loaded"
+                  : "✨ Load Starter Chores"}
+            </button>
+            <button
+              className="cq-btn-primary whitespace-nowrap"
+              onClick={openCreateMode}
+              type="button">
+              ➕ New Chore
+            </button>
+          </div>
+        </div>
       </div>
 
       {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
@@ -268,44 +476,75 @@ function ChoresInner() {
           </div>
 
           {(grouped[f] ?? []).map((c) => (
-            <div key={c.id} className="cq-card-soft p-4">
+            <div
+              key={c.id}
+              className={
+                "cq-card p-4 hover:shadow-md transition-shadow " +
+                (!c.active ? "opacity-60" : "")
+              }>
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold">{c.title}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-base">{c.title}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <span
                       className={
-                        "rounded-full px-2 py-1 " + freqPill[c.frequency]
+                        "rounded-full px-2.5 py-1 font-medium border " +
+                        freqPill[c.frequency]
                       }>
                       {c.frequency}
                     </span>
 
-                    <span className="cq-pill">👥 {c.assigneeMode}</span>
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 font-medium">
+                      <span>👥</span>
+                      <span className="capitalize">{c.assigneeMode}</span>
+                    </span>
 
                     {c.assigneeMode === "fixed" && c.fixedAssigneeUid ? (
-                      <span className="cq-pill">
-                        🎯{" "}
-                        {members.find((m) => m.uid === c.fixedAssigneeUid)
-                          ?.name ?? "Fixed"}
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-100 font-medium">
+                        <span>🎯</span>
+                        <span>
+                          {(() => {
+                            const member = members.find(
+                              (m) => m.uid === c.fixedAssigneeUid,
+                            );
+                            if (member) return member.name;
+                            // If member not found, might be deleted or not loaded yet
+                            return members.length > 0
+                              ? "Unknown Member"
+                              : "Loading...";
+                          })()}
+                        </span>
                       </span>
                     ) : null}
 
-                    <span className="cq-pill">
-                      ⭐ {difficultyStars(c.points)}
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-100 font-medium">
+                      <span>{difficultyStars(c.points)}</span>
                     </span>
-                    <span className="cq-pill">🪙 {c.points} pts</span>
+
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-100 text-amber-700 border border-amber-200 font-semibold">
+                      <span>🪙</span>
+                      <span>{c.points} pts</span>
+                    </span>
 
                     {!c.active ? (
-                      <span className="cq-pill bg-gray-100 text-gray-600">
+                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 font-medium">
                         inactive
                       </span>
                     ) : null}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
-                    className="cq-btn"
+                    className="cq-btn text-xs"
+                    onClick={() => openEditMode(c)}
+                    disabled={busy === c.id}
+                    type="button">
+                    ✏️ Edit
+                  </button>
+
+                  <button
+                    className="cq-btn text-xs"
                     onClick={() => toggleActive(c)}
                     disabled={busy === c.id}
                     type="button">
@@ -313,7 +552,7 @@ function ChoresInner() {
                   </button>
 
                   <button
-                    className="cq-btn"
+                    className="cq-btn text-xs text-red-600 hover:bg-red-50"
                     onClick={() => remove(c.id)}
                     disabled={busy === c.id}
                     type="button">
@@ -328,7 +567,7 @@ function ChoresInner() {
 
       {/* TOAST */}
       {toast ? (
-        <div className="fixed bottom-6 left-1/2 z-[80] -translate-x-1/2">
+        <div className="fixed bottom-6 left-1/2 z-80 -translate-x-1/2">
           <div
             className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-lg"
             style={{ borderColor: "var(--cq-border)" }}>
@@ -339,15 +578,20 @@ function ChoresInner() {
 
       {/* MODAL */}
       {open ? (
-        <div className="fixed inset-0 z-[60] bg-black/40">
+        <div className="fixed inset-0 z-60 bg-black/40">
           <div className="h-full w-full p-4 sm:p-6 grid place-items-center">
             <div className="w-full max-w-2xl rounded-2xl border bg-white shadow-lg overflow-hidden">
               {/* header */}
               <div className="flex items-center justify-between px-6 py-4 border-b">
-                <div className="text-lg font-semibold">Create New Chore</div>
+                <div className="text-lg font-semibold">
+                  {editingChore ? "Edit Chore" : "Create New Chore"}
+                </div>
                 <button
                   className="cq-btn"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    setEditingChore(null);
+                  }}
                   type="button">
                   ✕
                 </button>
@@ -507,17 +751,26 @@ function ChoresInner() {
               <div className="px-6 py-4 border-t flex items-center justify-between">
                 <button
                   className="cq-btn"
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    setEditingChore(null);
+                  }}
                   type="button">
                   Cancel
                 </button>
 
                 <button
                   className="cq-btn-primary"
-                  onClick={createAndSave}
-                  disabled={busy === "create" || !title.trim()}
+                  onClick={saveChore}
+                  disabled={
+                    busy === (editingChore?.id ?? "create") || !title.trim()
+                  }
                   type="button">
-                  {busy === "create" ? "Saving..." : "Create Chore"}
+                  {busy === (editingChore?.id ?? "create")
+                    ? "Saving..."
+                    : editingChore
+                      ? "Update Chore"
+                      : "Create Chore"}
                 </button>
               </div>
             </div>

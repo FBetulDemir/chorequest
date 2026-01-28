@@ -26,6 +26,7 @@ export type ChoreTemplate = {
   frequency: Frequency;
   assigneeMode: AssigneeMode;
   active: boolean;
+  fixedAssigneeUid?: string; // for fixed mode: the uid of the assigned member
 
   createdAt: number; // NEW (anchor)
   schedule?: ChoreSchedule; // NEW

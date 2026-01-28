@@ -6,7 +6,7 @@ import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
 import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
 import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
-import type { PointsLedgerEntry } from "@/src/types";
+import type { PointsLedgerEntry } from "@/src/lib/types";
 
 export default function HistoryPage() {
   return (
@@ -134,39 +134,64 @@ function HistoryInner() {
           const isSkipped = reason.startsWith("Skipped:");
           const isUndo = reason.startsWith("Undo:");
 
+          const icon = isCompleted ? "✓" : isSkipped ? "⏭️" : "↩️";
+          const badgeColor = isCompleted
+            ? "bg-emerald-100 text-emerald-700"
+            : isSkipped
+              ? "bg-gray-100 text-gray-700"
+              : "bg-amber-100 text-amber-700";
+
           return (
-            <div key={e.id} className="cq-card-soft p-4">
+            <div key={e.id} className="cq-card p-4 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold">
-                    {reason
-                      .replace("Completed: ", "")
-                      .replace("Skipped: ", "")
-                      .replace("Undo: ", "")}
-                    <span className="ml-2 text-xs text-gray-400">
-                      {isCompleted
-                        ? "(done)"
-                        : isSkipped
-                          ? "(skipped)"
-                          : isUndo
-                            ? "(undo)"
-                            : ""}
-                    </span>
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-50 border border-gray-100 shrink-0 text-lg">
+                    {icon}
                   </div>
 
-                  <div className="mt-1 text-xs text-gray-500">
-                    {who} • {when}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-base truncate">
+                      {reason
+                        .replace("Completed: ", "")
+                        .replace("Skipped: ", "")
+                        .replace("Undo: ", "")}
+                    </div>
+
+                    <div className="mt-1 text-xs text-gray-500">
+                      {who} • {when}
+                    </div>
+
+                    <div className="mt-2">
+                      <span
+                        className={
+                          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold " +
+                          badgeColor
+                        }>
+                        {isCompleted
+                          ? "Completed"
+                          : isSkipped
+                            ? "Skipped"
+                            : "Undone"}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <div className="cq-pill">
-                    {Number(e.delta ?? 0) > 0
-                      ? `+${e.delta}`
-                      : Number(e.delta ?? 0) < 0
-                        ? `${e.delta}`
-                        : "0"}
-                  </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {Number(e.delta ?? 0) !== 0 ? (
+                    <div
+                      className={
+                        "flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold " +
+                        (Number(e.delta ?? 0) > 0
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-red-100 text-red-700")
+                      }>
+                      {Number(e.delta ?? 0) > 0
+                        ? `+${e.delta}`
+                        : `${e.delta}`}{" "}
+                      pts
+                    </div>
+                  ) : null}
 
                   {isCompleted ? (
                     <button
@@ -184,8 +209,12 @@ function HistoryInner() {
         })}
 
         {!loading && rows.length === 0 ? (
-          <div className="cq-card-soft p-8 text-center text-sm text-gray-500">
-            No history yet.
+          <div className="cq-card p-8 text-center">
+            <div className="text-5xl mb-3">📜</div>
+            <div className="font-semibold text-gray-700">No history yet</div>
+            <div className="text-sm text-gray-500 mt-1">
+              Activity will appear here once chores are completed
+            </div>
           </div>
         ) : null}
       </div>
