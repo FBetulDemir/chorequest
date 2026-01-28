@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/src/components/AuthProvider";
 
-export default function LoginPage() {
+function LoginForm() {
   const { signIn, signUp } = useAuth();
   const router = useRouter();
   const params = useSearchParams();
@@ -85,5 +85,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center p-6"><div className="text-sm text-gray-500">Loading...</div></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -29,6 +29,7 @@ export type ChoreTemplate = {
   fixedAssigneeUid?: string; // for fixed mode: the uid of the assigned member
 
   createdAt: number; // NEW (anchor)
+  updatedAt: number;
   schedule?: ChoreSchedule; // NEW
 };
 
