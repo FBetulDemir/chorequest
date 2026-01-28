@@ -5,12 +5,13 @@ import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
 import { listChoreTemplates } from "@/src/lib/chores";
-import { listLedgerEntries } from "@/src/lib/points";
+import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
 import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
 import { buildOccurrences } from "@/src/lib/schedule";
+import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
 
 type ViewMode = "upcoming" | "completed";
-type Freq = "daily" | "weekly" | "monthly" | "seasonal";
+type Freq = "daily" | "weekly" | "monthly" | "seasonal" | "all";
 
 function localDayKey(ms: number) {
   const d = new Date(ms);
@@ -76,11 +77,14 @@ function PlanInner() {
   const [householdId, setHouseholdId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
   const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [freq, setFreq] = useState<Freq>("daily");
+  const [freq, setFreq] = useState<Freq>("all");
   const [view, setView] = useState<ViewMode>("upcoming");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadProfile() {
@@ -94,19 +98,14 @@ function PlanInner() {
     setError(null);
     setLoading(true);
     try {
-      const [t, e] = await Promise.all([
+      const [t, e, m] = await Promise.all([
         listChoreTemplates(hid),
         listLedgerEntries(hid, 4000),
+        listHouseholdMembers(hid),
       ]);
       setTemplates(t);
       setLedger(e);
-      // TEMP DEBUG: show completions for dishes
-      const dishes = e.filter(
-        (x) =>
-          String(x.reason ?? "").startsWith("Completed:") &&
-          String(x.templateId ?? "").length > 0,
-      );
-      console.log("ledger completions", dishes.slice(0, 20));
+      setMembers(m);
     } catch (err: any) {
       setError(err?.message ?? "Failed to load");
     } finally {
@@ -119,6 +118,104 @@ function PlanInner() {
     refresh(householdId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId]);
+
+  function hashStr(s: string) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+
+  function dayIndexFromDayKey(dayKey: string) {
+    const d = new Date(`${dayKey}T12:00:00`);
+    return Math.floor(d.getTime() / 86400000);
+  }
+
+  function getNameByUid(uid: string | undefined) {
+    if (!uid) return null;
+    return members.find((m) => m.uid === uid)?.name ?? null;
+  }
+
+  function getAssigneeForOccurrence(o: Occ) {
+    const mode = String(o.chore?.assigneeMode ?? "anyone");
+
+    if (mode === "fixed") {
+      const name = getNameByUid(o.chore?.fixedAssigneeUid);
+      return name ? `🎯 ${name}` : "🎯 Fixed";
+    }
+
+    if (mode === "rotating") {
+      if (!members.length) return "🔁 Rotating";
+      const idx =
+        (hashStr(o.templateId) + dayIndexFromDayKey(o.dayKey)) % members.length;
+      return `🔁 ${members[idx].name}`;
+    }
+
+    return "👥 Anyone";
+  }
+
+  async function complete(templateId: string, dayKey: string, chore: ChoreTemplate) {
+    if (!householdId) return;
+
+    const key = `${templateId}__${dayKey}`;
+    setError(null);
+    setBusyKey(key);
+
+    try {
+      const st = statusByKey.get(key);
+      if (st && st.completedCount > 0) {
+        setError("Already completed for this day.");
+        return;
+      }
+
+      await addLedgerEntry(householdId, {
+        actorUid: uid,
+        delta: chore.points,
+        reason: `Completed: ${chore.title}`,
+        createdAt: Date.now(),
+        templateId,
+        dayKey,
+      });
+
+      const e = await listLedgerEntries(householdId, 4000);
+      setLedger(e);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to complete");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function skip(templateId: string, dayKey: string, chore: ChoreTemplate) {
+    if (!householdId) return;
+
+    const key = `${templateId}__${dayKey}`;
+    setError(null);
+    setBusyKey(key);
+
+    try {
+      const st = statusByKey.get(key);
+      if (st?.skipped) {
+        setError("Already skipped for this day.");
+        return;
+      }
+
+      await addLedgerEntry(householdId, {
+        actorUid: uid,
+        delta: 0,
+        reason: `Skipped: ${chore.title}`,
+        createdAt: Date.now(),
+        templateId,
+        dayKey,
+      });
+
+      const e = await listLedgerEntries(householdId, 4000);
+      setLedger(e);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to skip");
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   const occurrencesAll: Occ[] = useMemo(() => {
     const now = Date.now();
@@ -152,12 +249,24 @@ function PlanInner() {
   );
 
   const byFreq: Occ[] = useMemo(() => {
+    if (freq === "all") return occurrencesAll;
+
     const want = freq;
     return occurrencesAll.filter((o) => {
       const f = String(o.chore.frequency ?? "").toLowerCase();
       return f === want;
     });
   }, [occurrencesAll, freq]);
+
+  const filteredBySearch: Occ[] = useMemo(() => {
+    if (!searchQuery.trim()) return byFreq;
+
+    const query = searchQuery.toLowerCase();
+    return byFreq.filter((o) => {
+      const title = String(o.chore.title ?? "").toLowerCase();
+      return title.includes(query);
+    });
+  }, [byFreq, searchQuery]);
 
   const isCompleted = (o: Occ) => {
     const key = `${o.templateId}__${o.dayKey}`;
@@ -168,13 +277,13 @@ function PlanInner() {
   };
 
   const upcomingList = useMemo(
-    () => byFreq.filter((o) => !isCompleted(o)),
-    [byFreq, statusByKey],
+    () => filteredBySearch.filter((o) => !isCompleted(o)),
+    [filteredBySearch, statusByKey],
   );
 
   const completedList = useMemo(
-    () => byFreq.filter((o) => isCompleted(o)),
-    [byFreq, statusByKey],
+    () => filteredBySearch.filter((o) => isCompleted(o)),
+    [filteredBySearch, statusByKey],
   );
 
   const visible = view === "completed" ? completedList : upcomingList;
@@ -186,13 +295,27 @@ function PlanInner() {
           <div>
             <div className="cq-title">Plan</div>
             <div className="cq-subtitle">
-              Upcoming and completed chores by frequency
+              Search and complete chores by frequency
             </div>
           </div>
           <div className="text-xs text-gray-500">Horizon: next 30 days</div>
         </div>
 
+        {/* Search */}
+        <div className="mt-4">
+          <input
+            type="text"
+            className="cq-input"
+            placeholder="🔍 Search chores by name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
+          <TabButton active={freq === "all"} onClick={() => setFreq("all")}>
+            All
+          </TabButton>
           <TabButton active={freq === "daily"} onClick={() => setFreq("daily")}>
             Daily
           </TabButton>
@@ -256,6 +379,8 @@ function PlanInner() {
             const isTomorrow =
               date.toDateString() ===
               new Date(Date.now() + 86400000).toDateString();
+            const isUpcoming = view === "upcoming";
+            const isBusy = busyKey === key;
 
             return (
               <div
@@ -287,9 +412,7 @@ function PlanInner() {
                         {String(o.chore.frequency)}
                       </span>
                       <span>•</span>
-                      <span className="capitalize">
-                        {String(o.chore.assigneeMode)}
-                      </span>
+                      <span>{getAssigneeForOccurrence(o)}</span>
                     </div>
                   </div>
 
@@ -300,6 +423,47 @@ function PlanInner() {
                     </div>
                   </div>
                 </div>
+
+                {/* Complete/Skip buttons for upcoming chores */}
+                {isUpcoming && (
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      className="
+                        w-full inline-flex items-center justify-center gap-2
+                        rounded-xl px-4 py-3 text-sm font-semibold text-white
+                        bg-gradient-to-r from-emerald-500 to-green-500
+                        shadow-sm shadow-emerald-200/50
+                        hover:from-emerald-600 hover:to-green-600
+                        hover:shadow-md hover:shadow-emerald-200/60
+                        active:scale-[0.98]
+                        transition-all duration-150
+                        disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-sm
+                      "
+                      onClick={() => complete(o.templateId, o.dayKey, o.chore)}
+                      disabled={isBusy}
+                      type="button">
+                      {isBusy ? "..." : `✓ Complete (+${o.chore.points} pts)`}
+                    </button>
+
+                    <button
+                      className="
+                        inline-flex items-center justify-center gap-2
+                        rounded-xl px-4 py-3 text-sm font-medium
+                        bg-white text-gray-700
+                        border border-gray-200
+                        shadow-sm
+                        hover:bg-gray-50 hover:text-gray-900
+                        active:scale-[0.98]
+                        transition-all duration-150
+                        disabled:opacity-60 disabled:cursor-not-allowed
+                      "
+                      onClick={() => skip(o.templateId, o.dayKey, o.chore)}
+                      disabled={isBusy}
+                      type="button">
+                      Skip
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
