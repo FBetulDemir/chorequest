@@ -27,39 +27,19 @@ const freqPill: Record<Frequency, string> = {
   seasonal: "bg-emerald-50 text-emerald-700",
 };
 
-// emoji list (duplicates are ok now because key uses idx)
-const icons = [
-  "🪴",
-  "🧹",
-  "🧺",
-  "🛒",
-  "🗑️",
-  "🚗",
-  "🛁",
-  "🪟",
-  "🍽️",
-  "🛏️",
-  "🐶",
-  "🧼",
-  "🧽",
-  "🧯",
-  "🔧",
-  "🎁",
-  "🌿",
-  "🧊",
-  "📦",
-  "🧻",
-  "🪣",
-  "🧤",
-  "🪠",
-  "🪥",
-  "🧴",
-  "🧺",
-  "🧼",
-  "🧹",
-  "🪟",
-  "🛒",
-];
+// Organized emoji categories for chore icons
+const iconCategories: Record<string, string[]> = {
+  "Cleaning": ["🧹", "🧽", "🪣", "🧴", "🫧", "✨", "💨", "🪤"],
+  "Kitchen": ["🍽️", "🍳", "🥄", "🫕", "🧊", "🗑️", "♨️", "🧂"],
+  "Laundry": ["🧺", "👕", "👖", "🧦", "🧤", "🫧", "☀️", "🧵"],
+  "Bathroom": ["🛁", "🚿", "🪥", "🧻", "🪠", "🧼", "🪒", "💊"],
+  "Bedroom": ["🛏️", "🛋️", "🪟", "🪞", "💡", "🧸", "📚", "🕯️"],
+  "Outdoor": ["🌿", "🪴", "🌱", "🌳", "🍂", "🚗", "🏠", "🔧"],
+  "Pets": ["🐶", "🐱", "🐟", "🐦", "🦮", "🥣", "💩", "🦴"],
+  "Shopping": ["🛒", "📦", "💳", "📝", "🏪", "🛍️", "🥬", "🧃"],
+  "Maintenance": ["🔧", "🔨", "💡", "🔌", "🪛", "📐", "🧰", "🪜"],
+  "Other": ["📅", "⏰", "📞", "💰", "📬", "🎁", "🧯", "🗂️"],
+};
 
 // Starter chore templates for new households
 const starterChores = [
@@ -600,26 +580,39 @@ function ChoresInner() {
               <div className="max-h-[75vh] overflow-y-auto px-6 py-5 space-y-5">
                 {/* icon picker */}
                 <div>
-                  <div className="text-sm font-medium text-gray-700 mb-2">
-                    Icon
-                  </div>
-                  <div className="rounded-2xl border bg-white p-3">
-                    <div className="grid grid-cols-8 sm:grid-cols-10 gap-2">
-                      {icons.map((ic, idx) => (
-                        <button
-                          key={`${ic}-${idx}`}
-                          className={
-                            "h-10 w-10 rounded-xl border grid place-items-center " +
-                            (icon === ic
-                              ? "bg-purple-50 border-purple-200"
-                              : "bg-white")
-                          }
-                          onClick={() => setIcon(ic)}
-                          type="button">
-                          {ic}
-                        </button>
-                      ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-sm font-medium text-gray-700">
+                      Icon
                     </div>
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-50 border border-purple-100">
+                      <span className="text-xl">{icon}</span>
+                      <span className="text-xs text-purple-600 font-medium">Selected</span>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border bg-gray-50 p-3 max-h-48 overflow-y-auto space-y-3">
+                    {Object.entries(iconCategories).map(([category, emojis]) => (
+                      <div key={category}>
+                        <div className="text-xs font-medium text-gray-500 mb-1.5 sticky top-0 bg-gray-50">
+                          {category}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {emojis.map((ic, idx) => (
+                            <button
+                              key={`${category}-${ic}-${idx}`}
+                              className={
+                                "h-9 w-9 rounded-lg border grid place-items-center text-lg transition-all " +
+                                (icon === ic
+                                  ? "bg-purple-100 border-purple-300 scale-110"
+                                  : "bg-white border-gray-200 hover:border-purple-200 hover:bg-purple-50")
+                              }
+                              onClick={() => setIcon(ic)}
+                              type="button">
+                              {ic}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
