@@ -459,10 +459,10 @@ function ChoresInner() {
             <div
               key={c.id}
               className={
-                "cq-card p-4 hover:shadow-md transition-shadow " +
+                "cq-card p-4 hover:shadow-md transition-shadow overflow-hidden " +
                 (!c.active ? "opacity-60" : "")
               }>
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 min-w-0">
                 {/* Title row with action buttons */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-semibold text-base">{c.title}</div>
@@ -492,49 +492,50 @@ function ChoresInner() {
                 </div>
 
                 {/* Tags row */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs min-w-0">
                   <span
                     className={
-                      "rounded-full px-2.5 py-1 font-medium border " +
+                      "rounded-full px-2 py-0.5 font-medium border " +
                       freqPill[c.frequency]
                     }>
                     {c.frequency}
                   </span>
 
-                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 font-medium">
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 font-medium">
                     <span>👥</span>
                     <span className="capitalize">{c.assigneeMode}</span>
                   </span>
 
                   {c.assigneeMode === "fixed" && c.fixedAssigneeUid ? (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-100 font-medium">
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-purple-50 text-purple-700 border border-purple-100 font-medium truncate max-w-30">
                       <span>🎯</span>
-                      <span>
+                      <span className="truncate">
                         {(() => {
                           const member = members.find(
                             (m) => m.uid === c.fixedAssigneeUid,
                           );
                           if (member) return member.name;
                           return members.length > 0
-                            ? "Unknown Member"
-                            : "Loading...";
+                            ? "Unknown"
+                            : "...";
                         })()}
                       </span>
                     </span>
                   ) : null}
 
-                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-100 font-medium">
-                    <span>{difficultyStars(c.points)}</span>
+                  <span className="inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-100 font-medium">
+                    <span>⭐</span>
+                    <span>×{difficultyLevel(c.points)}</span>
                   </span>
 
-                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-100 text-amber-700 border border-amber-200 font-semibold">
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 font-semibold">
                     <span>🪙</span>
-                    <span>{c.points} pts</span>
+                    <span>{c.points}</span>
                   </span>
 
                   {!c.active ? (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 font-medium">
-                      inactive
+                    <span className="rounded-full px-2 py-0.5 bg-gray-100 text-gray-600 border border-gray-200 font-medium">
+                      off
                     </span>
                   ) : null}
                 </div>
@@ -634,14 +635,14 @@ function ChoresInner() {
                   <div className="text-sm font-medium text-gray-700 mb-2">
                     Difficulty (affects points)
                   </div>
-                  <div className="grid grid-cols-5 gap-2">
-                    {[10, 20, 30, 40, 50].map((p) => (
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    {[10, 20, 30, 40, 50, 60].map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setPoints(p)}
                         className={
-                          "rounded-xl border p-3 text-center text-sm " +
+                          "rounded-xl border p-2 sm:p-3 text-center text-sm " +
                           (points === p ? "text-white" : "bg-white")
                         }
                         style={
@@ -653,7 +654,10 @@ function ChoresInner() {
                               }
                             : { borderColor: "var(--cq-border)" }
                         }>
-                        <div>{difficultyStars(p)}</div>
+                        <div className="flex items-center justify-center gap-0.5">
+                          <span>⭐</span>
+                          <span className="text-xs">×{difficultyLevel(p)}</span>
+                        </div>
                         <div className="text-xs opacity-80">{p} pts</div>
                       </button>
                     ))}
@@ -665,7 +669,7 @@ function ChoresInner() {
                   <div className="text-sm font-medium text-gray-700 mb-2">
                     Frequency
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {(
                       ["daily", "weekly", "monthly", "seasonal"] as Frequency[]
                     ).map((f) => (
@@ -674,7 +678,7 @@ function ChoresInner() {
                         type="button"
                         onClick={() => setFrequency(f)}
                         className={
-                          "rounded-xl border px-3 py-3 text-sm " +
+                          "rounded-xl border px-2 sm:px-3 py-2 sm:py-3 text-sm " +
                           (frequency === f ? "text-white" : "bg-white")
                         }
                         style={
@@ -799,12 +803,13 @@ function ModeCard({
   );
 }
 
-function difficultyStars(points: number) {
-  if (points <= 10) return "⭐";
-  if (points <= 20) return "⭐⭐";
-  if (points <= 30) return "⭐⭐⭐";
-  if (points <= 40) return "⭐⭐⭐⭐";
-  return "⭐⭐⭐⭐⭐";
+function difficultyLevel(points: number): number {
+  if (points <= 10) return 1;
+  if (points <= 20) return 2;
+  if (points <= 30) return 3;
+  if (points <= 40) return 4;
+  if (points <= 50) return 5;
+  return 6;
 }
 
 function capitalize(s: string) {
