@@ -289,174 +289,185 @@ function PlanInner() {
   const visible = view === "completed" ? completedList : upcomingList;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 space-y-5">
+    <div className="space-y-4">
+      {/* Header */}
       <div className="cq-card p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="cq-title">Plan</div>
-            <div className="cq-subtitle">
-              Search and complete chores by frequency
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="text-4xl">📋</div>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold text-gray-900">Plan Ahead</h1>
+            <p className="text-sm text-gray-500">
+              View and complete chores for the next 30 days
+            </p>
           </div>
-          <div className="text-xs text-gray-500">Horizon: next 30 days</div>
         </div>
 
+        {error ? (
+          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">
+            {error}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Search & Filters */}
+      <div className="cq-card p-4 space-y-4">
         {/* Search */}
-        <div className="mt-4">
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+            🔍
+          </span>
           <input
             type="text"
-            className="cq-input"
-            placeholder="🔍 Search chores by name..."
+            className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            placeholder="Search chores..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <TabButton active={freq === "all"} onClick={() => setFreq("all")}>
-            All
-          </TabButton>
-          <TabButton active={freq === "daily"} onClick={() => setFreq("daily")}>
-            Daily
-          </TabButton>
-          <TabButton
-            active={freq === "weekly"}
-            onClick={() => setFreq("weekly")}>
-            Weekly
-          </TabButton>
-          <TabButton
-            active={freq === "monthly"}
-            onClick={() => setFreq("monthly")}>
-            Monthly
-          </TabButton>
-          <TabButton
-            active={freq === "seasonal"}
-            onClick={() => setFreq("seasonal")}>
-            Seasonal
-          </TabButton>
+        {/* Frequency Filter */}
+        <div>
+          <div className="text-xs font-medium text-gray-500 mb-2">Frequency</div>
+          <div className="flex flex-wrap gap-2">
+            {(["all", "daily", "weekly", "monthly", "seasonal"] as Freq[]).map(
+              (f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setFreq(f)}
+                  className={
+                    "px-3 py-1.5 rounded-lg text-xs font-medium transition-all " +
+                    (freq === f
+                      ? "bg-purple-100 text-purple-700 border border-purple-200"
+                      : "bg-gray-100 text-gray-600 border border-transparent hover:bg-gray-200")
+                  }>
+                  {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ),
+            )}
+          </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <TabButton
-            active={view === "upcoming"}
-            onClick={() => setView("upcoming")}>
-            Upcoming ({upcomingList.length})
-          </TabButton>
-          <TabButton
-            active={view === "completed"}
-            onClick={() => setView("completed")}>
-            Completed ({completedList.length})
-          </TabButton>
+        {/* View Toggle */}
+        <div className="flex rounded-xl bg-gray-100 p-1">
+          <button
+            type="button"
+            onClick={() => setView("upcoming")}
+            className={
+              "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all " +
+              (view === "upcoming"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700")
+            }>
+            <span>⏳</span>
+            <span>Upcoming</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-xs font-semibold">
+              {upcomingList.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("completed")}
+            className={
+              "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all " +
+              (view === "completed"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700")
+            }>
+            <span>✓</span>
+            <span>Done</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-xs font-semibold">
+              {completedList.length}
+            </span>
+          </button>
         </div>
-
-        {error ? (
-          <div className="mt-3 text-sm text-red-600">{error}</div>
-        ) : null}
       </div>
 
-      <div className="cq-card-soft p-5">
+      {/* Results */}
+      <div className="space-y-3">
         {loading ? (
-          <div className="text-sm text-gray-500">Loading...</div>
+          <div className="cq-card p-8 text-center">
+            <div className="text-gray-500">Loading...</div>
+          </div>
         ) : null}
 
         {!loading && visible.length === 0 ? (
           <div className="cq-card p-8 text-center">
-            <div className="text-5xl mb-3">📭</div>
-            <div className="font-semibold text-gray-700">Nothing here</div>
+            <div className="text-5xl mb-3">
+              {view === "completed" ? "🎯" : "✨"}
+            </div>
+            <div className="font-semibold text-gray-700">
+              {view === "completed" ? "No completed chores yet" : "All caught up!"}
+            </div>
             <div className="text-sm text-gray-500 mt-1">
-              No {view === "completed" ? "completed" : "upcoming"} chores in this
-              frequency
+              {view === "completed"
+                ? "Complete some chores to see them here"
+                : "No upcoming chores match your filters"}
             </div>
           </div>
         ) : null}
 
-        <div className="space-y-3">
-          {visible.map((o) => {
-            const key = `${o.templateId}__${o.dayKey}`;
-            const date = new Date(o.dueMs);
-            const isToday =
-              date.toDateString() === new Date().toDateString();
-            const isTomorrow =
-              date.toDateString() ===
-              new Date(Date.now() + 86400000).toDateString();
-            const isUpcoming = view === "upcoming";
-            const isBusy = busyKey === key;
+        {visible.map((o) => {
+          const key = `${o.templateId}__${o.dayKey}`;
+          const date = new Date(o.dueMs);
+          const isToday = date.toDateString() === new Date().toDateString();
+          const isTomorrow =
+            date.toDateString() ===
+            new Date(Date.now() + 86400000).toDateString();
+          const isUpcoming = view === "upcoming";
+          const isBusy = busyKey === key;
 
-            return (
-              <div
-                key={key}
-                className={
-                  "cq-card p-4 transition-shadow hover:shadow-md " +
-                  (isToday ? "border-l-4 border-l-emerald-500" : "")
-                }>
-                <div className="flex items-start justify-between gap-3">
+          return (
+            <div
+              key={key}
+              className={
+                "cq-card p-4 transition-shadow hover:shadow-md " +
+                (isToday ? "ring-2 ring-emerald-200 bg-emerald-50/30" : "")
+              }>
+              <div className="flex flex-col gap-3">
+                {/* Title row */}
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <div className="truncate font-semibold text-base">
-                        {o.chore.title}
-                      </div>
-                      {isToday ? (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-emerald-100 text-emerald-700">
-                          Today
-                        </span>
-                      ) : isTomorrow ? (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700">
-                          Tomorrow
-                        </span>
-                      ) : null}
-                    </div>
+                    <div className="font-semibold text-base">{o.chore.title}</div>
                     <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-gray-500">
-                      <span>📅 {o.dayKey}</span>
-                      <span>•</span>
-                      <span className="capitalize">
-                        {String(o.chore.frequency)}
+                      <span className="inline-flex items-center gap-1">
+                        <span>📅</span>
+                        <span>{o.dayKey}</span>
                       </span>
-                      <span>•</span>
+                      <span className="text-gray-300">•</span>
                       <span>{getAssigneeForOccurrence(o)}</span>
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold">
+                  <div className="flex items-center gap-2 shrink-0">
+                    {isToday ? (
+                      <span className="px-2 py-1 rounded-lg text-xs font-semibold bg-emerald-100 text-emerald-700">
+                        Today
+                      </span>
+                    ) : isTomorrow ? (
+                      <span className="px-2 py-1 rounded-lg text-xs font-semibold bg-blue-100 text-blue-700">
+                        Tomorrow
+                      </span>
+                    ) : null}
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-100 text-amber-700 text-xs font-semibold">
                       <span>🪙</span>
-                      <span>{Number(o.chore.points ?? 0)}</span>
-                    </div>
+                      <span>{o.chore.points}</span>
+                    </span>
                   </div>
                 </div>
 
-                {/* Complete/Skip buttons for upcoming chores */}
+                {/* Action buttons */}
                 {isUpcoming && (
-                  <div className="mt-4 flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <button
-                      className="
-                        w-full inline-flex items-center justify-center gap-2
-                        rounded-xl px-4 py-3 text-sm font-semibold text-white
-                        bg-gradient-to-r from-emerald-500 to-green-500
-                        shadow-sm shadow-emerald-200/50
-                        hover:from-emerald-600 hover:to-green-600
-                        hover:shadow-md hover:shadow-emerald-200/60
-                        active:scale-[0.98]
-                        transition-all duration-150
-                        disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-sm
-                      "
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 active:scale-[0.98] transition-all disabled:opacity-60"
                       onClick={() => complete(o.templateId, o.dayKey, o.chore)}
                       disabled={isBusy}
                       type="button">
-                      {isBusy ? "..." : `✓ Complete (+${o.chore.points} pts)`}
+                      {isBusy ? "..." : `✓ Complete (+${o.chore.points})`}
                     </button>
-
                     <button
-                      className="
-                        inline-flex items-center justify-center gap-2
-                        rounded-xl px-4 py-3 text-sm font-medium
-                        bg-white text-gray-700
-                        border border-gray-200
-                        shadow-sm
-                        hover:bg-gray-50 hover:text-gray-900
-                        active:scale-[0.98]
-                        transition-all duration-150
-                        disabled:opacity-60 disabled:cursor-not-allowed
-                      "
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
                       onClick={() => skip(o.templateId, o.dayKey, o.chore)}
                       disabled={isBusy}
                       type="button">
@@ -464,42 +475,19 @@ function PlanInner() {
                     </button>
                   </div>
                 )}
+
+                {/* Completed state */}
+                {!isUpcoming && (
+                  <div className="flex items-center gap-2 text-sm text-emerald-600">
+                    <span>✓</span>
+                    <span>Completed</span>
+                  </div>
+                )}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        "cq-btn rounded-2xl px-5 py-2.5 " +
-        (active ? "text-white" : "text-gray-900")
-      }
-      style={
-        active
-          ? {
-              background:
-                "linear-gradient(90deg, var(--cq-purple), var(--cq-pink))",
-              borderColor: "transparent",
-            }
-          : { borderColor: "var(--cq-border)" }
-      }>
-      {children}
-    </button>
   );
 }

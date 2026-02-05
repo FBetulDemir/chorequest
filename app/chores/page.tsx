@@ -419,7 +419,7 @@ function ChoresInner() {
   return (
     <div className="space-y-5">
       <div className="cq-card p-5">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <div className="cq-title">Chore Templates</div>
             <div className="cq-subtitle">
@@ -430,9 +430,9 @@ function ChoresInner() {
             ) : null}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              className="cq-btn text-xs whitespace-nowrap"
+              className="cq-btn text-xs"
               onClick={loadStarterChores}
               disabled={busy === "starter" || hasStarterChores}
               type="button"
@@ -444,11 +444,11 @@ function ChoresInner() {
               {busy === "starter"
                 ? "Loading..."
                 : hasStarterChores
-                  ? "✓ Starter Chores Loaded"
-                  : "✨ Load Starter Chores"}
+                  ? "✓ Loaded"
+                  : "✨ Starter Chores"}
             </button>
             <button
-              className="cq-btn-primary whitespace-nowrap"
+              className="cq-btn-primary"
               onClick={openCreateMode}
               type="button">
               ➕ New Chore
@@ -482,82 +482,81 @@ function ChoresInner() {
                 "cq-card p-4 hover:shadow-md transition-shadow " +
                 (!c.active ? "opacity-60" : "")
               }>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
+              <div className="flex flex-col gap-3">
+                {/* Title row with action buttons */}
+                <div className="flex items-start justify-between gap-2">
                   <div className="font-semibold text-base">{c.title}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    <span
-                      className={
-                        "rounded-full px-2.5 py-1 font-medium border " +
-                        freqPill[c.frequency]
-                      }>
-                      {c.frequency}
-                    </span>
-
-                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 font-medium">
-                      <span>👥</span>
-                      <span className="capitalize">{c.assigneeMode}</span>
-                    </span>
-
-                    {c.assigneeMode === "fixed" && c.fixedAssigneeUid ? (
-                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-100 font-medium">
-                        <span>🎯</span>
-                        <span>
-                          {(() => {
-                            const member = members.find(
-                              (m) => m.uid === c.fixedAssigneeUid,
-                            );
-                            if (member) return member.name;
-                            // If member not found, might be deleted or not loaded yet
-                            return members.length > 0
-                              ? "Unknown Member"
-                              : "Loading...";
-                          })()}
-                        </span>
-                      </span>
-                    ) : null}
-
-                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-100 font-medium">
-                      <span>{difficultyStars(c.points)}</span>
-                    </span>
-
-                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-100 text-amber-700 border border-amber-200 font-semibold">
-                      <span>🪙</span>
-                      <span>{c.points} pts</span>
-                    </span>
-
-                    {!c.active ? (
-                      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 font-medium">
-                        inactive
-                      </span>
-                    ) : null}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      className="cq-btn text-xs px-2 py-1"
+                      onClick={() => openEditMode(c)}
+                      disabled={busy === c.id}
+                      type="button">
+                      ✏️
+                    </button>
+                    <button
+                      className="cq-btn text-xs px-2 py-1"
+                      onClick={() => toggleActive(c)}
+                      disabled={busy === c.id}
+                      type="button">
+                      {busy === c.id ? "…" : c.active ? "⏸️" : "▶️"}
+                    </button>
+                    <button
+                      className="cq-btn text-xs px-2 py-1 text-red-600 hover:bg-red-50"
+                      onClick={() => remove(c.id)}
+                      disabled={busy === c.id}
+                      type="button">
+                      🗑️
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    className="cq-btn text-xs"
-                    onClick={() => openEditMode(c)}
-                    disabled={busy === c.id}
-                    type="button">
-                    ✏️ Edit
-                  </button>
+                {/* Tags row */}
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span
+                    className={
+                      "rounded-full px-2.5 py-1 font-medium border " +
+                      freqPill[c.frequency]
+                    }>
+                    {c.frequency}
+                  </span>
 
-                  <button
-                    className="cq-btn text-xs"
-                    onClick={() => toggleActive(c)}
-                    disabled={busy === c.id}
-                    type="button">
-                    {busy === c.id ? "…" : c.active ? "Disable" : "Enable"}
-                  </button>
+                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-100 font-medium">
+                    <span>👥</span>
+                    <span className="capitalize">{c.assigneeMode}</span>
+                  </span>
 
-                  <button
-                    className="cq-btn text-xs text-red-600 hover:bg-red-50"
-                    onClick={() => remove(c.id)}
-                    disabled={busy === c.id}
-                    type="button">
-                    Delete
-                  </button>
+                  {c.assigneeMode === "fixed" && c.fixedAssigneeUid ? (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-100 font-medium">
+                      <span>🎯</span>
+                      <span>
+                        {(() => {
+                          const member = members.find(
+                            (m) => m.uid === c.fixedAssigneeUid,
+                          );
+                          if (member) return member.name;
+                          return members.length > 0
+                            ? "Unknown Member"
+                            : "Loading...";
+                        })()}
+                      </span>
+                    </span>
+                  ) : null}
+
+                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-100 font-medium">
+                    <span>{difficultyStars(c.points)}</span>
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-amber-100 text-amber-700 border border-amber-200 font-semibold">
+                    <span>🪙</span>
+                    <span>{c.points} pts</span>
+                  </span>
+
+                  {!c.active ? (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 bg-gray-100 text-gray-600 border border-gray-200 font-medium">
+                      inactive
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>

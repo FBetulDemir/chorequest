@@ -575,12 +575,10 @@ function Stat({
   tone: string;
 }) {
   return (
-    <div className={"rounded-xl border p-4 " + tone}>
-      <div className="flex items-center justify-between">
-        <div className="text-xs opacity-80 font-medium">{title}</div>
-        {icon ? <div className="text-lg">{icon}</div> : null}
-      </div>
-      <div className="text-2xl font-bold mt-2">{value}</div>
+    <div className={"rounded-xl border p-3 text-center " + tone}>
+      {icon ? <div className="text-lg mb-1">{icon}</div> : null}
+      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-xs opacity-80 font-medium mt-1">{title}</div>
     </div>
   );
 }
