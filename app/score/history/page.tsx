@@ -85,17 +85,22 @@ function ScoreHistoryInner() {
     members.find((m) => m.uid === u)?.name ?? "Member";
 
   const months = useMemo<MonthGroup[]>(() => {
-    const completionEvents = ledger.filter((e) => {
+    // Include both completions (+points) and undos (-points) so totals net out correctly
+    const scoreEvents = ledger.filter((e) => {
       const reason = String(e.reason ?? "");
       const delta = Number(e.delta ?? 0);
-      return reason.startsWith("Completed:") && delta > 0;
+      return (
+        (reason.startsWith("Completed:") && delta > 0) ||
+        (reason.startsWith("Undo:") && delta < 0)
+      );
     });
 
     const byMonth = new Map<string, Map<string, MemberTotal>>();
 
-    for (const e of completionEvents) {
+    for (const e of scoreEvents) {
       const t = Number(e.createdAt ?? 0);
       if (!t) continue;
+      const isUndo = String(e.reason ?? "").startsWith("Undo:");
       const d = new Date(t);
       const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
@@ -108,7 +113,7 @@ function ScoreHistoryInner() {
         chores: 0,
       };
       cur.points += Number(e.delta ?? 0);
-      cur.chores += 1;
+      cur.chores = isUndo ? Math.max(0, cur.chores - 1) : cur.chores + 1;
       byUid.set(who, cur);
       byMonth.set(monthKey, byUid);
     }

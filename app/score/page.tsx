@@ -118,6 +118,28 @@ function ScoreInner() {
       byUid.set(who, cur);
     }
 
+    // Net out undone completions so score reflects Undo actions
+    const undoEvents = ledger.filter((e) => {
+      const t = Number(e.createdAt ?? 0);
+      if (!(t >= startMs && t < endMs)) return false;
+      const reason = String(e.reason ?? "");
+      const delta = Number(e.delta ?? 0);
+      return reason.startsWith("Undo:") && delta < 0;
+    });
+
+    for (const e of undoEvents) {
+      const who = String(e.actorUid ?? "");
+      const cur = byUid.get(who) ?? {
+        points: 0,
+        chores: 0,
+        choreNames: [],
+        completionDays: new Set<string>(),
+      };
+      cur.points += Number(e.delta ?? 0);
+      cur.chores = Math.max(0, cur.chores - 1);
+      byUid.set(who, cur);
+    }
+
     const nameOf = (u: string) =>
       members.find((m) => m.uid === u)?.name ?? "Member";
 
