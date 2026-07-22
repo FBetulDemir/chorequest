@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { getUserProfile } from "@/src/lib/profile";
@@ -289,6 +290,16 @@ function ScoreInner() {
           All Time
         </TabButton>
       </div>
+
+      <Link
+        href="/score/history"
+        className="cq-card-soft p-4 flex items-center justify-between hover:shadow-md transition">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">📆</span>
+          <span className="font-medium text-sm">View scores by month</span>
+        </div>
+        <span className="text-gray-400">→</span>
+      </Link>
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
       {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}

@@ -61,6 +61,13 @@ function UserMenu() {
               <span>📜</span>
               <span>History</span>
             </Link>
+            <Link
+              href="/score/history"
+              onClick={() => setOpen(false)}
+              className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 transition flex items-center gap-2 font-medium">
+              <span>📆</span>
+              <span>Monthly Scores</span>
+            </Link>
             <div className="border-t border-gray-100" />
             <button
               onClick={handleSignOut}
