@@ -14,6 +14,8 @@ import { renameHousehold } from "@/src/lib/households";
 import { getRangeMs } from "@/src/lib/ledgerHelpers";
 import { scoresInRange } from "@/src/lib/scoring";
 import { friendlyError } from "@/src/lib/errors";
+import { copyText, shareText } from "@/src/lib/native";
+import { inviteMessage } from "@/src/lib/invite";
 
 export default function HouseholdPage() {
   return (
@@ -33,34 +35,16 @@ function HouseholdInner() {
     return scoresInRange(ledger, startMs, endMs);
   }, [ledger]);
 
-  const inviteText = `Join our household "${household.name}" on ChoreQuest! Sign up at ${
-    typeof window !== "undefined" ? window.location.origin : ""
-  } and enter the code ${household.code}`;
-
   async function copyCode() {
-    try {
-      await navigator.clipboard.writeText(household.code);
-      toast("Invite code copied ✓");
-    } catch {
-      toast("Couldn't copy. Please select the code and copy it manually.", { tone: "error" });
-    }
+    const ok = await copyText(household.code);
+    if (ok) toast("Invite code copied ✓");
+    else toast("Couldn't copy. Please select the code and copy it manually.", { tone: "error" });
   }
 
   async function share() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Join me on ChoreQuest", text: inviteText });
-      } catch {
-        // The user closed the share sheet
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(inviteText);
-      toast("Invite message copied. Paste it in a chat ✓");
-    } catch {
-      toast("Couldn't copy the invite.", { tone: "error" });
-    }
+    const result = await shareText(inviteMessage(household));
+    if (result === "copied") toast("Invite message copied. Paste it in a chat ✓");
+    else if (result === "failed") toast("Couldn't share the invite.", { tone: "error" });
   }
 
   return (

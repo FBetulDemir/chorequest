@@ -319,11 +319,31 @@ Also done in Phase 1:
 
 ### Phase 3: Native app (2–3 weeks)
 
-1. Static export + Capacitor iOS/Android (§1.1)
-2. Push notifications and reminders (Cloud Functions + FCM)
-3. Haptics, share sheet, deep links, safe areas
-4. Sign in with Apple and Google
-5. Sentry/Crashlytics, analytics, App Check
+Code is done. What's left needs your accounts, a Mac or the Firebase console; see `docs/MOBILE.md`.
+
+- [x] Mobile-first polish:
+  - 16px inputs (no iOS zoom on focus), 44pt touch targets, dynamic viewport units, safe areas
+  - swipe left to reveal Skip
+- [x] Static export + Capacitor 7 iOS/Android projects (`npm run build:mobile`, `npm run ios`, `npm run android`) (§1.1)
+  - native app icons and splash screens; status bar follows the theme; Android back button; live reload via `CAP_SERVER_URL`
+- [x] Native haptics, share sheet and clipboard, with web fallbacks
+- [x] Invite links: `/join?code=…` page, plus `chorequest://` and https links opening the app
+- [x] Daily reminder (local notification) in Profile
+- [x] Push notifications:
+  - device registration in Profile
+  - Cloud Functions for "chore completed" and "weekly winner"
+  - **not deployed**: needs the Blaze plan, native Firebase config and deployed rules
+- [x] Sign in with Apple and Google: web popups and native sheets. Hidden until configured.
+- [x] Friendly error screens; opt-in Firebase Analytics (GDPR consent toggle)
+- [ ] Your setup steps (docs/MOBILE.md):
+  - [ ] Firebase iOS/Android apps
+  - [ ] APNs key
+  - [ ] Xcode capabilities
+  - [ ] deploy rules and functions
+  - [ ] AASA and assetlinks files
+- [ ] Crash reporting (Sentry/Crashlytics). Postponed: the Capacitor Firebase plugins currently require Firebase 11 (the app uses 12)
+- [ ] App Check. Needs a native attestation provider first; enforcing it now would lock out the apps
+- [ ] Test on real devices (TestFlight / Play internal testing)
 
 ### Phase 4: Monetization and launch (2–3 weeks)
 

@@ -65,6 +65,11 @@ service cloud.firestore {
         );
 
       allow delete: if signedIn() && uid == me();
+
+      // Push notification tokens for this user's devices
+      match /pushTokens/{token} {
+        allow read, write: if signedIn() && uid == me();
+      }
     }
 
     // ---------- Households ----------

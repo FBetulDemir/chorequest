@@ -63,7 +63,7 @@ export default function WelcomePage() {
   const last = index === SLIDES.length - 1;
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col py-4">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col py-4">
       <div className="flex justify-end">
         <Link href="/login" className="rounded-full px-3 py-1.5 text-sm font-bold text-muted hover:text-ink">
           Sign in

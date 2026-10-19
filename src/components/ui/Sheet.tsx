@@ -66,7 +66,7 @@ export function Sheet({
         aria-labelledby={titleId}
         tabIndex={-1}
         className={clsx(
-          "animate-slide-up pb-safe relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[28px] border border-line bg-surface shadow-lifted outline-none sm:rounded-[28px]",
+          "animate-slide-up pb-safe relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] border border-line bg-surface shadow-lifted outline-none sm:rounded-[28px]",
           size === "sm" && "sm:max-w-md",
           size === "md" && "sm:max-w-lg",
           size === "lg" && "sm:max-w-2xl",

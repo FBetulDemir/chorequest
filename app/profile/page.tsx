@@ -2,19 +2,23 @@
 
 import React, { useState } from "react";
 import clsx from "clsx";
-import { CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { BarChart3, Bell, BellRing, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
 import { useFeedback } from "@/src/components/ui/Feedback";
 import { Button } from "@/src/components/ui/Button";
-import { Avatar, Card, ListRow, Segmented, SectionTitle } from "@/src/components/ui/Display";
+import { Avatar, Card, ListRow, Segmented, SectionTitle, Switch } from "@/src/components/ui/Display";
 import { ConfirmSheet, Sheet } from "@/src/components/ui/Sheet";
 import { updateUserProfile } from "@/src/lib/profile";
 import { AVATAR_EMOJIS } from "@/src/lib/choreCatalog";
 import { useThemePreference, type ThemePreference } from "@/src/lib/theme";
 import { friendlyError } from "@/src/lib/errors";
+import { applyReminder, loadReminder, remindersSupported, type ReminderSettings } from "@/src/lib/reminders";
+import { PUSH_CONFIGURED, disablePush, enablePush, savedPushToken } from "@/src/lib/push";
+import { isNative } from "@/src/lib/native";
+import { analyticsAvailable, hasAnalyticsConsent, setAnalyticsConsent } from "@/src/lib/analytics";
 
 export default function ProfilePage() {
   return (
@@ -84,6 +88,8 @@ function ProfileInner() {
         />
       </section>
 
+      <RemindersSection />
+
       {/* Shortcuts */}
       <section className="space-y-3">
         <SectionTitle>Your household</SectionTitle>
@@ -93,6 +99,8 @@ function ProfileInner() {
           <ListRow href="/score/history" icon={<CalendarRange size={18} />} title="Monthly scores" description="Every month's leaderboard" />
         </Card>
       </section>
+
+      <PrivacySection />
 
       {/* Account */}
       <section className="space-y-3">
@@ -209,5 +217,129 @@ function EditProfileSheet({
         {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
       </div>
     </Sheet>
+  );
+}
+
+function RemindersSection() {
+  const { toast } = useFeedback();
+  const { uid } = useReadyHousehold();
+  const [pushOn, setPushOn] = useState(() => !!savedPushToken());
+  const [pushBusy, setPushBusy] = useState(false);
+  const pushAvailable = isNative() && PUSH_CONFIGURED;
+
+  async function togglePush(next: boolean) {
+    setPushBusy(true);
+    try {
+      if (!next) {
+        await disablePush(uid);
+        setPushOn(false);
+        return;
+      }
+      const result = await enablePush(uid);
+      setPushOn(result === "enabled");
+      if (result === "enabled") toast("You'll hear when your household gets things done 🔔");
+      else if (result === "denied") toast("Notifications are off for ChoreQuest. Turn them on in your phone's Settings.", { tone: "error" });
+      else toast("Couldn't turn on notifications. Please try again.", { tone: "error" });
+    } finally {
+      setPushBusy(false);
+    }
+  }
+  // Profile only renders in the browser (behind RequireAuth), so local storage is available
+  const [settings, setSettings] = useState<ReminderSettings>(() => loadReminder());
+  const supported = remindersSupported();
+
+  async function update(next: ReminderSettings) {
+    setSettings(next);
+    try {
+      const result = await applyReminder(next);
+      if (result === "denied") {
+        setSettings({ ...next, enabled: false });
+        toast("Notifications are off for ChoreQuest. Turn them on in your phone's Settings.", { tone: "error" });
+      } else if (result === "scheduled") {
+        toast(`Daily reminder set for ${next.time} ⏰`);
+      }
+    } catch {
+      toast("Couldn't set the reminder. Please try again.", { tone: "error" });
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Reminders</SectionTitle>
+      <Card className="divide-y divide-line overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand-strong" aria-hidden="true">
+            <Bell size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-ink">Daily reminder</div>
+            <div className="text-xs text-muted">
+              {supported ? "A nudge to check today's chores" : "Available in the ChoreQuest app for iPhone and Android"}
+            </div>
+          </div>
+          <Switch
+            label="Daily reminder"
+            checked={supported && settings.enabled}
+            disabled={!supported}
+            onChange={(enabled) => update({ ...settings, enabled })}
+          />
+        </div>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand-strong" aria-hidden="true">
+            <BellRing size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-ink">Household activity</div>
+            <div className="text-xs text-muted">
+              {pushAvailable
+                ? "When someone completes a chore, and the weekly winner"
+                : isNative()
+                  ? "Coming soon"
+                  : "Available in the ChoreQuest app for iPhone and Android"}
+            </div>
+          </div>
+          <Switch label="Household activity notifications" checked={pushAvailable && pushOn} disabled={!pushAvailable || pushBusy} onChange={togglePush} />
+        </div>
+        {supported && settings.enabled ? (
+          <label className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="text-sm font-bold text-ink">Remind me at</span>
+            <input
+              type="time"
+              className="cq-input w-auto"
+              value={settings.time}
+              onChange={(e) => e.target.value && update({ ...settings, time: e.target.value })}
+            />
+          </label>
+        ) : null}
+      </Card>
+    </section>
+  );
+}
+
+function PrivacySection() {
+  const [consent, setConsent] = useState(() => hasAnalyticsConsent());
+  if (!analyticsAvailable()) return null;
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Privacy</SectionTitle>
+      <Card className="flex items-center gap-3 px-4 py-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand-strong" aria-hidden="true">
+          <BarChart3 size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-ink">Share anonymous usage stats</div>
+          <div className="text-xs text-muted">Helps us see which screens people use. Never your chores or names.</div>
+        </div>
+        <Switch
+          label="Share anonymous usage stats"
+          checked={consent}
+          onChange={(on) => {
+            setConsent(on);
+            setAnalyticsConsent(on).catch(() => {});
+          }}
+        />
+      </Card>
+    </section>
   );
 }

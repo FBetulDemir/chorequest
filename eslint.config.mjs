@@ -14,6 +14,11 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Plain Node scripts
     "scripts/**",
+    // Native projects and build output (contain copies of the built web app)
+    "android/**",
+    "ios/**",
+    // Cloud Functions have their own package and build
+    "functions/**",
   ]),
 ]);
 

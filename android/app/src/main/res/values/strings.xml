@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ChoreQuest</string>
+    <string name="title_activity_main">ChoreQuest</string>
+    <string name="package_name">com.chorequest.app</string>
+    <string name="custom_url_scheme">com.chorequest.app</string>
+</resources>

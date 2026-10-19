@@ -35,14 +35,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { profile } = useHousehold();
 
   if (CHROMELESS.includes(pathname)) {
-    return <main className="cq-container pt-safe pb-safe min-h-screen">{children}</main>;
+    return <main className="cq-container pt-safe pb-safe min-h-dvh">{children}</main>;
   }
 
   const showTabs = !!user && !NO_TABS.includes(pathname);
   const name = profile?.name?.trim() || user?.email || "";
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-dvh">
       {/* Top bar */}
       <header className="pt-safe sticky top-0 z-40 border-b border-line bg-glass backdrop-blur-xl">
         <div className="cq-container flex h-16 items-center justify-between">
