@@ -6,6 +6,7 @@ import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "@/src/lib/firebase";
 import { useAuth } from "@/src/components/AuthProvider";
 import { ensureUserProfile } from "@/src/lib/profile";
+import { isDeletingAccount } from "@/src/lib/account";
 import { loadMembers, memberUids, type HouseholdMember } from "@/src/lib/members";
 import { subscribeChoreTemplates } from "@/src/lib/chores";
 import { subscribeLedger } from "@/src/lib/points";
@@ -50,6 +51,7 @@ function toHousehold(id: string, d: DocumentData): Household {
     name: d.name ?? "Household",
     code: d.code ?? "",
     members: d.members ?? {},
+    plan: d.plan ?? null,
     createdAt: Number(d.createdAt ?? Date.now()),
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };
@@ -75,7 +77,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
       (snap) => {
         if (!snap.exists()) {
           // Brand-new account: create the profile so onboarding can continue.
-          if (!creating) {
+          if (!creating && !isDeletingAccount()) {
             creating = true;
             ensureUserProfile({ uid, email }).catch((err) =>
               setProfileState({ key: uid, value: null, error: friendlyError(err, "Couldn't create your profile.") }),

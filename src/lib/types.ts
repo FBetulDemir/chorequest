@@ -11,11 +11,21 @@ export type UserProfile = {
   updatedAt: number;
 };
 
+export type HouseholdPlan = {
+  tier: "plus";
+  expiresAt: number | null; // null = doesn't expire
+  store?: string;
+  productId?: string;
+  purchaserUid?: string;
+  updatedAt?: number;
+};
+
 export type Household = {
   id: string;
   name: string;
   code: string; // share this with partner to join
   members: Record<string, boolean>; // { [uid]: true }
+  plan?: HouseholdPlan | null; // set by the server only (see functions/)
   createdAt: number;
   updatedAt: number;
 };
@@ -67,4 +77,30 @@ export type ChoreSchedule = {
   // for seasonal chores: month number 1..12
   seasonalMonth?: number;
   seasonalDay?: number; // 1..28
+};
+
+// Rewards shop (see src/lib/rewards.ts)
+export type Reward = {
+  id: string;
+  title: string;
+  icon: string;
+  cost: number;
+  active: boolean;
+  createdBy: string;
+  createdAt: number;
+};
+
+export type RedemptionStatus = "pending" | "fulfilled";
+
+export type Redemption = {
+  id: string;
+  rewardId: string;
+  title: string;
+  icon: string;
+  cost: number;
+  uid: string;
+  status: RedemptionStatus;
+  createdAt: number;
+  fulfilledBy?: string;
+  fulfilledAt?: number;
 };

@@ -25,6 +25,8 @@ import {
   splitChoreTitle,
 } from "@/src/lib/choreCatalog";
 import { friendlyError } from "@/src/lib/errors";
+import { PlusPrompt, usePlan } from "@/src/components/Plus";
+import { FREE_LIMITS, choreLimitReached } from "@/src/lib/plan";
 import type { HouseholdMember } from "@/src/lib/members";
 import type { AssigneeMode, ChoreTemplate, ChoreTemplateInput, Frequency } from "@/src/lib/types";
 
@@ -51,6 +53,13 @@ export default function ChoreManager() {
   // `null` chore = creating a new one
   const [editing, setEditing] = useState<{ chore: ChoreTemplate | null } | null>(null);
   const [addingStarters, setAddingStarters] = useState(false);
+  const [limitPrompt, setLimitPrompt] = useState(false);
+  const plan = usePlan();
+
+  function startNewChore() {
+    if (choreLimitReached(plan, templates.length)) setLimitPrompt(true);
+    else setEditing({ chore: null });
+  }
 
   const grouped = useMemo(() => {
     const map: Record<Frequency, ChoreTemplate[]> = { daily: [], weekly: [], monthly: [], seasonal: [] };
@@ -68,6 +77,10 @@ export default function ChoreManager() {
   }, [templates]);
 
   async function addStarterChores() {
+    if (choreLimitReached(plan, templates.length, STARTER_CHORES.length)) {
+      setLimitPrompt(true);
+      return;
+    }
     setAddingStarters(true);
     try {
       await Promise.all(
@@ -100,7 +113,7 @@ export default function ChoreManager() {
                 <Sparkles size={14} aria-hidden="true" /> Starter pack
               </Button>
             ) : null}
-            <Button size="sm" variant="primary" onClick={() => setEditing({ chore: null })}>
+            <Button size="sm" variant="primary" onClick={startNewChore}>
               <Plus size={16} aria-hidden="true" /> New chore
             </Button>
           </div>
@@ -165,6 +178,13 @@ export default function ChoreManager() {
           </ul>
         </div>
       ))}
+
+      <PlusPrompt
+        open={limitPrompt}
+        onClose={() => setLimitPrompt(false)}
+        title="You've hit the free limit"
+        message={`Free households can have up to ${FREE_LIMITS.chores} chores. Upgrade to ChoreQuest Plus for unlimited chores, more members and the rewards shop. Or pause or delete a chore you don't need.`}
+      />
 
       {editing ? (
         <ChoreEditor

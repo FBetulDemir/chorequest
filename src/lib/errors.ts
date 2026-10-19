@@ -12,10 +12,17 @@ const MESSAGES: Record<string, string> = {
   "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
   "auth/network-request-failed": "Can't reach the server. Check your internet connection.",
   "auth/user-disabled": "This account has been disabled.",
+  "auth/missing-password": "Please enter your password.",
+  "auth/requires-recent-login": "For your security, please sign in again and retry.",
+  "auth/user-mismatch": "That's a different account. Use the one you're signed in with.",
   "auth/account-exists-with-different-credential":
     "You already have an account with this email. Sign in with your email and password instead.",
   "auth/operation-not-allowed": "This sign-in method isn't available yet. Please use your email.",
   "auth/popup-blocked": "Your browser blocked the sign-in window. Allow pop-ups and try again.",
+
+  // ChoreQuest
+  "household-full":
+    "This household is full on the free plan. Ask a member to upgrade to ChoreQuest Plus so you can join.",
 
   // Firestore
   "permission-denied": "You don't have permission to do that.",

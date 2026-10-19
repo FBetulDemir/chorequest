@@ -169,6 +169,11 @@ function TodayInner() {
                   <Flame size={13} aria-hidden="true" /> {streak}-day streak
                 </span>
               ) : null}
+              <Link
+                href="/rewards"
+                className="inline-flex items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1 text-xs font-extrabold text-brand-strong">
+                🎁 Rewards
+              </Link>
             </div>
           </div>
         </div>

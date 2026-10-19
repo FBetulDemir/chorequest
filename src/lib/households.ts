@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import type { Household } from "@/src/lib/types";
 import { ensureUserProfile } from "@/src/lib/profile";
+import { memberLimitReached, planFor } from "@/src/lib/plan";
 
 function randomCode(len = 6) {
   // No 0/O or 1/I, so codes are easy to read aloud.
@@ -82,6 +83,15 @@ export async function joinHouseholdByCode(params: {
 
   const d = snap.docs[0];
   const hid = d.id;
+
+  // Free households have a member limit
+  const data = d.data();
+  const members = (data.members ?? {}) as Record<string, boolean>;
+  const count = Object.keys(members).filter((u) => members[u] === true && u !== authUid).length;
+  const plan = planFor({ plan: data.plan ?? null, createdAt: Number(data.createdAt ?? Date.now()) });
+  if (memberLimitReached(plan, count)) {
+    throw Object.assign(new Error("Household is full"), { code: "household-full" });
+  }
   const now = Date.now();
 
   // 1) Household membership update
@@ -112,6 +122,7 @@ export async function getHousehold(hid: string): Promise<Household | null> {
     name: d.name ?? "Household",
     code: d.code ?? "",
     members: d.members ?? {},
+    plan: d.plan ?? null,
     createdAt: Number(d.createdAt ?? Date.now()),
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };

@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import clsx from "clsx";
-import { CalendarRange, Flame, Share2 } from "lucide-react";
+import { CalendarRange, Flame, Gift, Share2 } from "lucide-react";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
@@ -169,7 +169,8 @@ function ScoreInner() {
 
       {!dataLoading ? <Achievements rows={rows} /> : null}
 
-      <Card className="overflow-hidden">
+      <Card className="divide-y divide-line overflow-hidden">
+        <ListRow href="/rewards" icon={<Gift size={18} />} title="Rewards shop" description="Spend your coins on real-life treats" />
         <ListRow
           href="/score/history"
           icon={<CalendarRange size={18} />}

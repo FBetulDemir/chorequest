@@ -50,6 +50,12 @@ Add these to `.env.local` (and to Vercel's project settings for the web build) a
 | `NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID` | Google sign-in in the apps | `1234-abc.apps.googleusercontent.com` |
 | `NEXT_PUBLIC_GOOGLE_IOS_CLIENT_ID` | Google sign-in on iOS | `1234-ios.apps.googleusercontent.com` |
 | `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Opt-in usage analytics (§8) | `G-XXXXXXX` |
+| `NEXT_PUBLIC_PAYWALL_ENABLED` | Turns on ChoreQuest Plus limits and the paywall (§10) | `1` |
+| `NEXT_PUBLIC_FOUNDERS_BEFORE` | Households created before this time (ms) keep Plus free | `1798761600000` |
+| `NEXT_PUBLIC_REVENUECAT_IOS_KEY` | RevenueCat public SDK key for iOS | `appl_…` |
+| `NEXT_PUBLIC_REVENUECAT_ANDROID_KEY` | RevenueCat public SDK key for Android | `goog_…` |
+| `NEXT_PUBLIC_SUPPORT_EMAIL` | Contact address on the Privacy, Terms and Support pages | `support@yourdomain.com` |
+| `NEXT_PUBLIC_LEGAL_NAME` | Person or company responsible for the app (data controller) | `Your Name` or your company |
 
 Rebuild (`npm run build:mobile`) after changing them; they're baked into the app at build time.
 
@@ -177,7 +183,34 @@ In App Store Connect's privacy section, declare **Usage Data → Product Interac
 
 Nothing to configure. Profile → Reminders schedules a local notification on the phone at the chosen time.
 
-## 10. Releasing
+## 10. ChoreQuest Plus (subscriptions)
+
+Plus belongs to the **household**: one member subscribes and everyone gets it. Purchases run through RevenueCat in the apps (Apple and Google require their own billing for digital features). A webhook writes the result to `households/{id}.plan`, which the security rules don't let the app change.
+
+**Free plan:** up to 2 members and 15 chores, no rewards shop. **Plus:** unlimited members and chores, plus the rewards shop.
+
+1. **Store agreements.** App Store Connect → Business: sign the **Paid Apps** agreement and add bank and tax details. Google Play Console: set up a payments profile.
+2. **Products.**
+   - App Store Connect: create an auto-renewable subscription group "ChoreQuest Plus" with `plus_monthly` and `plus_yearly`. A 7-day free trial on yearly is a good start.
+   - Play Console: create the same two subscriptions.
+3. **RevenueCat** (free up to $2.5k monthly revenue):
+   - Create a project and add the iOS and Android apps.
+   - Create the entitlement **`plus`** and attach both products to it.
+   - Create an offering **`default`** with a Monthly and an Annual package. Make it the current offering.
+   - Copy the public SDK keys into `NEXT_PUBLIC_REVENUECAT_IOS_KEY` / `NEXT_PUBLIC_REVENUECAT_ANDROID_KEY`.
+4. **Webhook.**
+   - `npx firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH`: pick a long random value.
+   - Deploy functions (§5). Then in RevenueCat → Integrations → Webhooks, set:
+     - URL: `https://europe-west1-chore-quest-22419.cloudfunctions.net/revenuecatWebhook`
+     - Authorization header: the same value
+   - Send a test event; it should return 200.
+5. **Founding households (recommended).** Set `NEXT_PUBLIC_FOUNDERS_BEFORE` to the launch time in milliseconds, e.g. `Date.parse("2027-01-01")`. Households created before then, including yours, keep Plus for free.
+6. **Switch it on.** Set `NEXT_PUBLIC_PAYWALL_ENABLED=1` and rebuild. Until then everything is unlocked and `/plus` says it's free during early access.
+7. **Test** with sandbox accounts (App Store Connect → Users and Access → Sandbox) and Play license testers before submitting.
+
+Apple's review checks that the paywall shows the price, the renewal period, the auto-renewal terms, **Restore purchases**, and links to the Terms and Privacy Policy. `/plus` has all of these.
+
+## 11. Releasing
 
 1. Bump versions:
    - Android: `versionCode` / `versionName` in `android/app/build.gradle`

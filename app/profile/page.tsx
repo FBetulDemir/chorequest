@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import clsx from "clsx";
-import { BarChart3, Bell, BellRing, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { BarChart3, Bell, BellRing, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
@@ -19,6 +20,12 @@ import { applyReminder, loadReminder, remindersSupported, type ReminderSettings 
 import { PUSH_CONFIGURED, disablePush, enablePush, savedPushToken } from "@/src/lib/push";
 import { isNative } from "@/src/lib/native";
 import { analyticsAvailable, hasAnalyticsConsent, setAnalyticsConsent } from "@/src/lib/analytics";
+import { deleteAccount, isOnlyMember, signInMethod } from "@/src/lib/account";
+import { isCancelled } from "@/src/lib/socialAuth";
+import { badgesFor } from "@/src/lib/badges";
+import { usePlan } from "@/src/components/Plus";
+import { PAYWALL_ENABLED } from "@/src/lib/plan";
+import { FileText, LifeBuoy, Shield, Sparkles } from "lucide-react";
 
 export default function ProfilePage() {
   return (
@@ -36,10 +43,12 @@ function ProfileInner() {
 
   const [editing, setEditing] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const name = profile?.name ?? "";
   const email = user?.email ?? profile?.email ?? "";
+  const plan = usePlan();
 
   async function sendReset() {
     if (!email) return;
@@ -73,6 +82,8 @@ function ProfileInner() {
         </Button>
       </Card>
 
+      <BadgesSection />
+
       {/* Appearance */}
       <section className="space-y-3">
         <SectionTitle>Appearance</SectionTitle>
@@ -94,6 +105,14 @@ function ProfileInner() {
       <section className="space-y-3">
         <SectionTitle>Your household</SectionTitle>
         <Card className="divide-y divide-line overflow-hidden">
+          {PAYWALL_ENABLED ? (
+            <ListRow
+              href="/plus"
+              icon={<Sparkles size={18} />}
+              title="ChoreQuest Plus"
+              description={plan.tier === "plus" ? (plan.reason === "founder" ? "Founding household 💜" : "Active 💜") : "Unlimited members, chores and rewards"}
+            />
+          ) : null}
           <ListRow href="/household" icon={<House size={18} />} title={household.name} description="Members, invite code and chores" />
           <ListRow href="/history" icon={<History size={18} />} title="Activity history" description="Everything that was completed or skipped" />
           <ListRow href="/score/history" icon={<CalendarRange size={18} />} title="Monthly scores" description="Every month's leaderboard" />
@@ -108,10 +127,29 @@ function ProfileInner() {
         <Card className="divide-y divide-line overflow-hidden">
           <ListRow icon={<KeyRound size={18} />} title="Change password" description="We'll email you a reset link" onClick={sendReset} />
           <ListRow icon={<LogOut size={18} />} title="Sign out" onClick={() => setConfirmSignOut(true)} danger right={<span />} />
+          <ListRow
+            icon={<Trash2 size={18} />}
+            title="Delete account"
+            description="Permanently remove your account and data"
+            onClick={() => setDeleting(true)}
+            danger
+          />
         </Card>
       </section>
 
-      <p className="pb-4 text-center text-xs text-faint">ChoreQuest 0.2 · Made with 💜</p>
+      {/* About */}
+      <section className="space-y-3">
+        <SectionTitle>About</SectionTitle>
+        <Card className="divide-y divide-line overflow-hidden">
+          <ListRow href="/support" icon={<LifeBuoy size={18} />} title="Help & support" />
+          <ListRow href="/privacy" icon={<Shield size={18} />} title="Privacy Policy" />
+          <ListRow href="/terms" icon={<FileText size={18} />} title="Terms of Use" />
+        </Card>
+      </section>
+
+      <p className="pb-4 text-center text-xs text-faint">ChoreQuest 0.3 · Made with 💜</p>
+
+      {deleting ? <DeleteAccountSheet onClose={() => setDeleting(false)} /> : null}
 
       {editing ? <EditProfileSheet uid={uid} name={name} avatar={profile?.avatar ?? null} onClose={() => setEditing(false)} /> : null}
 
@@ -340,6 +378,146 @@ function PrivacySection() {
           }}
         />
       </Card>
+    </section>
+  );
+}
+
+function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { uid, household } = useReadyHousehold();
+  const { toast } = useFeedback();
+  const [password, setPassword] = useState("");
+  const [understood, setUnderstood] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!user) return null;
+  const method = signInMethod(user);
+  const alone = isOnlyMember(household, uid);
+
+  async function confirm() {
+    if (!user) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteAccount({ user, household, password });
+      toast("Your account has been deleted. Take care! 👋");
+      router.replace("/welcome");
+    } catch (e) {
+      if (!isCancelled(e)) setError(friendlyError(e, "Couldn't delete your account. Please try again."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title="Delete your account?"
+      size="sm"
+      footer={
+        <div className="flex gap-2">
+          <Button block onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            block
+            variant="danger"
+            loading={busy}
+            disabled={!understood || (method === "password" && !password)}
+            onClick={confirm}>
+            Delete forever
+          </Button>
+        </div>
+      }>
+      <div className="space-y-4 text-sm text-muted">
+        <p>This permanently deletes your sign-in and profile. It can&apos;t be undone.</p>
+        <p>
+          {alone ? (
+            <>
+              You&apos;re the only member of <strong className="text-ink">{household.name}</strong>, so the household
+              and all its chores and history will be deleted too.
+            </>
+          ) : (
+            <>
+              <strong className="text-ink">{household.name}</strong> keeps its chores and shared history for the other
+              members.
+            </>
+          )}
+        </p>
+
+        {method === "password" ? (
+          <div>
+            <label htmlFor="delete-password" className="mb-1.5 block font-bold text-ink">
+              Enter your password to confirm
+            </label>
+            <input
+              id="delete-password"
+              type="password"
+              className="cq-input"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+        ) : (
+          <p>You&apos;ll be asked to confirm with {method === "apple" ? "Apple" : "Google"}.</p>
+        )}
+
+        <label className="flex items-start gap-3 rounded-2xl bg-surface-2 p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-5 w-5 accent-red-600"
+            checked={understood}
+            onChange={(e) => setUnderstood(e.target.checked)}
+          />
+          <span className="text-ink">I understand my account can&apos;t be recovered</span>
+        </label>
+
+        {error ? <p role="alert" className="text-red-600">{error}</p> : null}
+      </div>
+    </Sheet>
+  );
+}
+
+function BadgesSection() {
+  const { uid, ledger } = useReadyHousehold();
+  const badges = useMemo(() => badgesFor(ledger, uid), [ledger, uid]);
+  const earnedCount = badges.filter((b) => b.earned).length;
+
+  return (
+    <section className="space-y-3" aria-labelledby="badges-heading">
+      <SectionTitle right={<span className="text-xs font-bold text-muted">{earnedCount} of {badges.length}</span>}>
+        <span id="badges-heading">Badges</span>
+      </SectionTitle>
+      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+        {badges.map((b) => (
+          <div
+            key={b.id}
+            className={clsx("cq-card flex flex-col items-center p-3 text-center", !b.earned && "bg-surface-2 shadow-none")}
+            title={b.description}>
+            <span className={clsx("text-3xl", !b.earned && "opacity-35 grayscale")} aria-hidden="true">
+              {b.emoji}
+            </span>
+            <span className={clsx("mt-1.5 text-[11px] font-extrabold leading-tight", b.earned ? "text-ink" : "text-muted")}>
+              {b.title}
+            </span>
+            {b.earned ? (
+              <span className="sr-only">Earned</span>
+            ) : (
+              <div className="mt-2 w-full" aria-label={`${b.progress} of ${b.target}`}>
+                <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
+                  <div className="h-full rounded-full bg-brand" style={{ width: `${(b.progress / b.target) * 100}%` }} />
+                </div>
+                <div className="mt-1 text-[10px] font-bold text-faint">
+                  {b.progress}/{b.target}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

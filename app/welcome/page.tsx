@@ -136,6 +136,18 @@ export default function WelcomePage() {
           I already have an account
         </Link>
       </div>
+
+      <nav className="mt-6 flex justify-center gap-4 text-xs font-semibold text-faint" aria-label="Legal">
+        <Link href="/privacy" className="hover:text-ink">
+          Privacy
+        </Link>
+        <Link href="/terms" className="hover:text-ink">
+          Terms
+        </Link>
+        <Link href="/support" className="hover:text-ink">
+          Support
+        </Link>
+      </nav>
     </div>
   );
 }
