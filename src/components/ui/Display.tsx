@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import clsx from "clsx";
 import { Mascot, type MascotMood } from "@/src/components/ui/Mascot";
 
@@ -231,5 +232,57 @@ export function SectionTitle({
       <h2 className="text-base font-extrabold text-ink">{children}</h2>
       {right ?? null}
     </div>
+  );
+}
+
+// ---------- List row ----------
+
+/** Tappable settings-style row with an icon, text and a chevron. */
+export function ListRow({
+  icon,
+  title,
+  description,
+  right,
+  onClick,
+  href,
+  danger = false,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description?: string;
+  right?: React.ReactNode;
+  onClick?: () => void;
+  href?: string;
+  danger?: boolean;
+}) {
+  const body = (
+    <>
+      <span
+        className={clsx(
+          "grid h-10 w-10 shrink-0 place-items-center rounded-2xl",
+          danger ? "bg-red-50 text-red-600" : "bg-brand-soft text-brand-strong",
+        )}
+        aria-hidden="true">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={clsx("block text-sm font-bold", danger ? "text-red-600" : "text-ink")}>{title}</span>
+        {description ? <span className="block truncate text-xs text-muted">{description}</span> : null}
+      </span>
+      {right ?? <span className="text-faint" aria-hidden="true">›</span>}
+    </>
+  );
+  const cls = "flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-surface-2";
+  if (href) {
+    return (
+      <Link href={href} className={cls}>
+        {body}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={cls}>
+      {body}
+    </button>
   );
 }

@@ -1,0 +1,213 @@
+"use client";
+
+import React, { useState } from "react";
+import clsx from "clsx";
+import { CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
+
+import RequireAuth from "@/src/components/RequireAuth";
+import { useAuth } from "@/src/components/AuthProvider";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { useFeedback } from "@/src/components/ui/Feedback";
+import { Button } from "@/src/components/ui/Button";
+import { Avatar, Card, ListRow, Segmented, SectionTitle } from "@/src/components/ui/Display";
+import { ConfirmSheet, Sheet } from "@/src/components/ui/Sheet";
+import { updateUserProfile } from "@/src/lib/profile";
+import { AVATAR_EMOJIS } from "@/src/lib/choreCatalog";
+import { useThemePreference, type ThemePreference } from "@/src/lib/theme";
+import { friendlyError } from "@/src/lib/errors";
+
+export default function ProfilePage() {
+  return (
+    <RequireAuth>
+      <ProfileInner />
+    </RequireAuth>
+  );
+}
+
+function ProfileInner() {
+  const { user, signOut, resetPassword } = useAuth();
+  const { uid, profile, household } = useReadyHousehold();
+  const { toast } = useFeedback();
+  const { preference, setPreference } = useThemePreference();
+
+  const [editing, setEditing] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  const name = profile?.name ?? "";
+  const email = user?.email ?? profile?.email ?? "";
+
+  async function sendReset() {
+    if (!email) return;
+    try {
+      await resetPassword(email);
+      toast(`Password reset link sent to ${email}`);
+    } catch (e) {
+      toast(friendlyError(e), { tone: "error" });
+    }
+  }
+
+  async function doSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+    } catch (e) {
+      toast(friendlyError(e), { tone: "error" });
+      setSigningOut(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-xl space-y-6">
+      {/* Identity */}
+      <Card className="flex flex-col items-center p-6 text-center">
+        <Avatar uid={uid} name={name || "?"} emoji={profile?.avatar} size={84} />
+        <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-ink">{name}</h1>
+        <p className="text-sm text-muted">{email}</p>
+        <Button size="sm" className="mt-4" onClick={() => setEditing(true)}>
+          Edit profile
+        </Button>
+      </Card>
+
+      {/* Appearance */}
+      <section className="space-y-3">
+        <SectionTitle>Appearance</SectionTitle>
+        <Segmented<ThemePreference>
+          label="Theme"
+          value={preference}
+          onChange={setPreference}
+          options={[
+            { value: "system", label: <span className="inline-flex items-center gap-1.5"><Monitor size={15} aria-hidden="true" /> System</span> },
+            { value: "light", label: <span className="inline-flex items-center gap-1.5"><Sun size={15} aria-hidden="true" /> Light</span> },
+            { value: "dark", label: <span className="inline-flex items-center gap-1.5"><Moon size={15} aria-hidden="true" /> Dark</span> },
+          ]}
+        />
+      </section>
+
+      {/* Shortcuts */}
+      <section className="space-y-3">
+        <SectionTitle>Your household</SectionTitle>
+        <Card className="divide-y divide-[var(--cq-line)] overflow-hidden">
+          <ListRow href="/household" icon={<House size={18} />} title={household.name} description="Members, invite code and chores" />
+          <ListRow href="/history" icon={<History size={18} />} title="Activity history" description="Everything that was completed or skipped" />
+          <ListRow href="/score/history" icon={<CalendarRange size={18} />} title="Monthly scores" description="Every month's leaderboard" />
+        </Card>
+      </section>
+
+      {/* Account */}
+      <section className="space-y-3">
+        <SectionTitle>Account</SectionTitle>
+        <Card className="divide-y divide-[var(--cq-line)] overflow-hidden">
+          <ListRow icon={<KeyRound size={18} />} title="Change password" description="We'll email you a reset link" onClick={sendReset} />
+          <ListRow icon={<LogOut size={18} />} title="Sign out" onClick={() => setConfirmSignOut(true)} danger right={<span />} />
+        </Card>
+      </section>
+
+      <p className="pb-4 text-center text-xs text-faint">ChoreQuest 0.2 · Made with 💜</p>
+
+      {editing ? <EditProfileSheet uid={uid} name={name} avatar={profile?.avatar ?? null} onClose={() => setEditing(false)} /> : null}
+
+      <ConfirmSheet
+        open={confirmSignOut}
+        title="Sign out?"
+        message="You can sign back in any time with your email and password."
+        confirmLabel="Sign out"
+        busy={signingOut}
+        onConfirm={doSignOut}
+        onCancel={() => setConfirmSignOut(false)}
+      />
+    </div>
+  );
+}
+
+function EditProfileSheet({
+  uid,
+  name: initialName,
+  avatar: initialAvatar,
+  onClose,
+}: {
+  uid: string;
+  name: string;
+  avatar: string | null;
+  onClose: () => void;
+}) {
+  const { toast } = useFeedback();
+  const [name, setName] = useState(initialName);
+  const [avatar, setAvatar] = useState<string | null>(initialAvatar);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateUserProfile(uid, { name: name.trim(), avatar });
+      toast("Profile saved ✓");
+      onClose();
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't save your profile."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      open
+      onClose={onClose}
+      title="Edit profile"
+      footer={
+        <Button variant="primary" block onClick={save} loading={busy} disabled={!name.trim()}>
+          Save
+        </Button>
+      }>
+      <div className="space-y-5">
+        <div className="flex justify-center">
+          <Avatar uid={uid} name={name || "?"} emoji={avatar} size={72} />
+        </div>
+        <div>
+          <label htmlFor="profile-name" className="mb-2 block text-sm font-bold text-ink">
+            Your name
+          </label>
+          <input
+            id="profile-name"
+            className="cq-input"
+            value={name}
+            maxLength={30}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <fieldset>
+          <legend className="mb-2 text-sm font-bold text-ink">Avatar</legend>
+          <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
+            <button
+              type="button"
+              onClick={() => setAvatar(null)}
+              aria-pressed={avatar === null}
+              className={clsx(
+                "grid aspect-square place-items-center rounded-2xl border text-xs font-extrabold transition",
+                avatar === null ? "border-brand bg-brand-soft text-brand-strong" : "border-line text-muted hover:border-brand",
+              )}>
+              Aa
+            </button>
+            {AVATAR_EMOJIS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => setAvatar(e)}
+                aria-label={`Use ${e} as avatar`}
+                aria-pressed={avatar === e}
+                className={clsx(
+                  "grid aspect-square place-items-center rounded-2xl border text-2xl transition",
+                  avatar === e ? "border-brand bg-brand-soft" : "border-line hover:border-brand",
+                )}>
+                {e}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+        {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+      </div>
+    </Sheet>
+  );
+}

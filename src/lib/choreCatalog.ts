@@ -23,6 +23,7 @@ export const EFFORT_LEVELS = [
   { points: 20, label: "Easy", hint: "~15 minutes" },
   { points: 30, label: "Medium", hint: "~30 minutes" },
   { points: 40, label: "Big", hint: "About an hour" },
+  { points: 50, label: "Huge", hint: "A couple of hours" },
   { points: 60, label: "Epic", hint: "Half a day" },
 ];
 
