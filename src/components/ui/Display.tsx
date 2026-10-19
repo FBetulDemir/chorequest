@@ -84,7 +84,7 @@ export function Avatar({
       className={clsx(
         "inline-grid shrink-0 select-none place-items-center rounded-full bg-gradient-to-br font-extrabold text-white",
         AVATAR_COLORS[hash(uid) % AVATAR_COLORS.length],
-        ring && "ring-2 ring-[var(--cq-surface)]",
+        ring && "ring-2 ring-surface",
         className,
       )}
       style={{ width: size, height: size, fontSize: emoji ? size * 0.55 : size * 0.38 }}>

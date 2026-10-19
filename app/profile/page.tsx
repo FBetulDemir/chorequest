@@ -87,7 +87,7 @@ function ProfileInner() {
       {/* Shortcuts */}
       <section className="space-y-3">
         <SectionTitle>Your household</SectionTitle>
-        <Card className="divide-y divide-[var(--cq-line)] overflow-hidden">
+        <Card className="divide-y divide-line overflow-hidden">
           <ListRow href="/household" icon={<House size={18} />} title={household.name} description="Members, invite code and chores" />
           <ListRow href="/history" icon={<History size={18} />} title="Activity history" description="Everything that was completed or skipped" />
           <ListRow href="/score/history" icon={<CalendarRange size={18} />} title="Monthly scores" description="Every month's leaderboard" />
@@ -97,7 +97,7 @@ function ProfileInner() {
       {/* Account */}
       <section className="space-y-3">
         <SectionTitle>Account</SectionTitle>
-        <Card className="divide-y divide-[var(--cq-line)] overflow-hidden">
+        <Card className="divide-y divide-line overflow-hidden">
           <ListRow icon={<KeyRound size={18} />} title="Change password" description="We'll email you a reset link" onClick={sendReset} />
           <ListRow icon={<LogOut size={18} />} title="Sign out" onClick={() => setConfirmSignOut(true)} danger right={<span />} />
         </Card>

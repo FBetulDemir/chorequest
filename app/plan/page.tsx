@@ -45,7 +45,7 @@ function PlanInner() {
 
   const statusByKey = useMemo(() => buildStatusByOccurrence(ledger), [ledger]);
 
-  async function run(key: string, action: () => Promise<void>) {
+  async function run(key: string, action: () => Promise<unknown>) {
     setError(null);
     setBusyKey(key);
     try {

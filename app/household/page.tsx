@@ -67,7 +67,7 @@ function HouseholdInner() {
     <div className="space-y-6">
       {/* Household header */}
       <Card className="relative overflow-hidden p-5">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[image:var(--cq-gradient)] opacity-15 blur-2xl" />
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-(image:--cq-gradient) opacity-15 blur-2xl" />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-bold uppercase tracking-wide text-muted">Your household</div>
@@ -113,7 +113,7 @@ function HouseholdInner() {
         <SectionTitle>
           <span id="members-heading">Members</span>
         </SectionTitle>
-        <Card className="divide-y divide-[var(--cq-line)] overflow-hidden">
+        <Card className="divide-y divide-line overflow-hidden">
           {members.map((m) => {
             const s = weekly.get(m.uid);
             return (

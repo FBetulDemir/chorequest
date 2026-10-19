@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChoreTemplate } from "@/src/lib/types";
-import { buildOccurrences, dayKeyFromTs } from "@/src/lib/schedule";
+import { buildOccurrences, buildPastOccurrences, dayKeyFromTs } from "@/src/lib/schedule";
 
 const day = (m: number, d: number) => new Date(2026, m - 1, d, 0, 0, 0, 0).getTime();
 
@@ -61,5 +61,30 @@ describe("buildOccurrences", () => {
       "w@2026-10-20",
       "d@2026-10-20",
     ]);
+  });
+});
+
+describe("buildPastOccurrences", () => {
+  const now = new Date(2026, 9, 19, 15).getTime();
+
+  it("returns the last missed weekly occurrence", () => {
+    // created Thu 1 Oct -> 8, 15, 22 ... ; last before the 19th is the 15th
+    const occ = buildPastOccurrences([chore({ frequency: "weekly", createdAt: day(10, 1) })], now, 14);
+    expect(occ.map((o) => [o.dayKey, o.bucket])).toEqual([["2026-10-15", "overdue"]]);
+  });
+
+  it("ignores daily chores and chores created today", () => {
+    const occ = buildPastOccurrences(
+      [chore({}), chore({ id: "w", frequency: "weekly", createdAt: day(10, 19) })],
+      now,
+      14,
+    );
+    expect(occ).toEqual([]);
+  });
+
+  it("respects the lookback window", () => {
+    const monthly = chore({ frequency: "monthly", createdAt: day(9, 1) }); // last: 1 Oct, 18 days ago
+    expect(buildPastOccurrences([monthly], now, 14)).toEqual([]);
+    expect(buildPastOccurrences([monthly], now, 30).map((o) => o.dayKey)).toEqual(["2026-10-01"]);
   });
 });

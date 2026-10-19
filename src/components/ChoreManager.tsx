@@ -131,7 +131,7 @@ export default function ChoreManager() {
             {FREQUENCY_LABEL[f]}
             <span className="font-semibold normal-case tracking-normal text-faint">· {grouped[f].length}</span>
           </div>
-          <ul className="divide-y divide-[var(--cq-line)]">
+          <ul className="divide-y divide-line">
             {grouped[f].map((c) => {
               const { icon, name } = splitChoreTitle(c.title);
               return (
@@ -347,7 +347,7 @@ function ChoreEditor({
                           }}
                           className={clsx(
                             "grid h-10 w-10 place-items-center rounded-xl text-xl transition",
-                            icon === ic ? "bg-brand-soft ring-2 ring-[var(--cq-brand)]" : "hover:bg-surface",
+                            icon === ic ? "bg-brand-soft ring-2 ring-brand" : "hover:bg-surface",
                           )}
                           aria-label={`Use ${ic}`}>
                           {ic}
@@ -372,7 +372,7 @@ function ChoreEditor({
                   aria-pressed={points === lvl.points}
                   className={clsx(
                     "rounded-2xl border p-2.5 text-left transition",
-                    points === lvl.points ? "border-transparent bg-[image:var(--cq-gradient)] text-white shadow-card" : "border-line bg-surface hover:border-brand",
+                    points === lvl.points ? "border-transparent bg-(image:--cq-gradient) text-white shadow-card" : "border-line bg-surface hover:border-brand",
                   )}>
                   <div className="text-sm font-extrabold">{lvl.label}</div>
                   <div className={clsx("text-xs", points === lvl.points ? "text-white/85" : "text-muted")}>
