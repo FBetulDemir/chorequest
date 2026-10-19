@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Let phones on the same Wi-Fi use the dev server (http://192.168.x.x:3001)
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*"],
   ...(isMobileBuild
     ? {
         output: "export",

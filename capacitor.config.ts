@@ -8,6 +8,8 @@ const config: CapacitorConfig = {
   // Static export from `npm run build:mobile`
   webDir: "out",
   backgroundColor: "#faf7ff",
+  // Live reload while developing: CAP_SERVER_URL=http://<your-pc-ip>:3001 npx cap run android
+  ...(process.env.CAP_SERVER_URL ? { server: { url: process.env.CAP_SERVER_URL, cleartext: true } } : {}),
   ios: {
     // The web app handles safe areas itself with env(safe-area-inset-*)
     contentInset: "never",
