@@ -17,6 +17,8 @@ import { createHousehold, joinHouseholdByCode } from "@/src/lib/households";
 import { createChoreTemplate } from "@/src/lib/chores";
 import { AVATAR_EMOJIS, FREQUENCY_LABEL, STARTER_CHORES, choreTitle } from "@/src/lib/choreCatalog";
 import { friendlyError } from "@/src/lib/errors";
+import { copyText, shareText } from "@/src/lib/native";
+import { inviteMessage } from "@/src/lib/invite";
 
 type Step = "name" | "household" | "invite" | "chores" | "done";
 
@@ -281,30 +283,17 @@ function InviteStep({ onNext }: { onNext: () => void }) {
   const { toast } = useFeedback();
   const code = household?.code ?? "";
 
-  const inviteText = `Join our household "${household?.name ?? ""}" on ChoreQuest! Sign up at ${
-    typeof window !== "undefined" ? window.location.origin : ""
-  } and enter the code ${code}`;
-
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(code);
-      toast("Code copied ✓");
-    } catch {
-      toast("Couldn't copy. Please write the code down.", { tone: "error" });
-    }
+    const ok = await copyText(code);
+    if (ok) toast("Code copied ✓");
+    else toast("Couldn't copy. Please write the code down.", { tone: "error" });
   }
 
   async function share() {
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: "Join me on ChoreQuest", text: inviteText });
-      } catch {
-        // closed the share sheet
-      }
-    } else {
-      await navigator.clipboard.writeText(inviteText).catch(() => {});
-      toast("Invite message copied ✓");
-    }
+    if (!household) return;
+    const result = await shareText(inviteMessage(household));
+    if (result === "copied") toast("Invite message copied ✓");
+    else if (result === "failed") toast("Couldn't share the invite.", { tone: "error" });
   }
 
   return (
