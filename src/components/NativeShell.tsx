@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
+import { pathFromAppLink } from "@/src/lib/invite";
 
 // Screens where Android's back button should leave the app instead of going back
 const ROOT_SCREENS = ["/", "/today", "/welcome"];
@@ -37,6 +38,18 @@ export function NativeShell() {
       const path = window.location.pathname.replace(/\/$/, "") || "/";
       if (ROOT_SCREENS.includes(path)) App.exitApp();
       else router.back();
+    });
+    return () => {
+      handle.then((h) => h.remove()).catch(() => {});
+    };
+  }, [router]);
+
+  // Invite links and chorequest:// links open the matching screen
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const handle = App.addListener("appUrlOpen", ({ url }) => {
+      const path = pathFromAppLink(url);
+      if (path) router.push(path);
     });
     return () => {
       handle.then((h) => h.remove()).catch(() => {});
