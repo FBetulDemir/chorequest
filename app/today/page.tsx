@@ -209,7 +209,7 @@ function TodayInner() {
           {shownToday.length > 0 ? (
             <>
               <div className="space-y-2.5">{shownToday.map((o) => renderCard(o))}</div>
-              <p className="text-center text-xs text-faint sm:hidden">Tip: swipe a chore to the right to complete it</p>
+              <p className="text-center text-xs text-faint sm:hidden">Tip: swipe right to complete, left to skip</p>
             </>
           ) : templates.length === 0 ? (
             <EmptyState

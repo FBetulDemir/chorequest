@@ -81,7 +81,7 @@ function LoginForm() {
   const copy = COPY[mode];
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center py-6">
+    <div className="flex min-h-dvh flex-col items-center justify-center py-6">
       <div className="mb-3 w-full max-w-md">
         <Link href="/welcome" className="inline-flex items-center gap-1 text-sm font-bold text-muted hover:text-ink">
           <ChevronLeft size={16} aria-hidden="true" /> Back

@@ -144,7 +144,8 @@ function PlanInner() {
 
       {byDay.map(([dayKey, list]) => (
         <section key={dayKey} className="space-y-2.5" aria-label={friendlyDay(dayKey, todayStartMs)}>
-          <div className="sticky top-16 z-10 -mx-1 bg-canvas/90 px-1 py-1 text-xs font-extrabold uppercase tracking-wide text-muted backdrop-blur">
+          <div style={{ top: "calc(4rem + env(safe-area-inset-top))" }}
+            className="sticky z-10 -mx-1 bg-canvas/90 px-1 py-1 text-xs font-extrabold uppercase tracking-wide text-muted backdrop-blur">
             {friendlyDay(dayKey, todayStartMs)}
           </div>
           {list.map((o) => {

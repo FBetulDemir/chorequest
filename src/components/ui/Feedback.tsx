@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useMemo, useRef, useStat
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { useIsClient } from "@/src/lib/useIsClient";
+import { haptic } from "@/src/lib/native";
 
 type ToastTone = "default" | "success" | "error";
 
@@ -97,11 +98,7 @@ export function FeedbackProvider({ children }: { children: React.ReactNode }) {
     const id = nextId.current++;
     setBursts((list) => [...list, { id, x, y, points }]);
     window.setTimeout(() => setBursts((list) => list.filter((b) => b.id !== id)), 1100);
-    try {
-      navigator.vibrate?.(14);
-    } catch {
-      // Vibration isn't available everywhere; that's fine.
-    }
+    haptic("success");
   }, []);
 
   const value = useMemo(() => ({ toast, celebrate }), [toast, celebrate]);

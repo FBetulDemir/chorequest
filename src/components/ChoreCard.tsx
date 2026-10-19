@@ -7,11 +7,13 @@ import { Check, SkipForward } from "lucide-react";
 import { Spinner } from "@/src/components/ui/Button";
 import { Avatar, PointsPill } from "@/src/components/ui/Display";
 import { splitChoreTitle } from "@/src/lib/choreCatalog";
+import { haptic } from "@/src/lib/native";
 import type { HouseholdMember } from "@/src/lib/members";
 import type { ChoreTemplate } from "@/src/lib/types";
 
-const SWIPE_TRIGGER = 90;
-const SWIPE_MAX = 140;
+const COMPLETE_TRIGGER = 90; // px to the right that completes the chore
+const COMPLETE_MAX = 140;
+const SKIP_WIDTH = 96; // revealed Skip button when swiping left
 
 function AssigneeChip({
   chore,
@@ -34,6 +36,10 @@ function AssigneeChip({
   );
 }
 
+/**
+ * A chore occurrence. On phones: swipe right to complete, swipe left to reveal Skip.
+ * Buttons do the same for mouse, keyboard and screen-reader users.
+ */
 export function ChoreCard({
   chore,
   meta,
@@ -46,7 +52,7 @@ export function ChoreCard({
   onSkip,
 }: {
   chore: ChoreTemplate;
-  /** Short context such as "Tomorrow" or "Due Thu 15 Oct" */
+  /** Short context such as "Tomorrow" or "Was due Thu 15 Oct" */
   meta?: string;
   assignee: HouseholdMember | null;
   currentUid: string;
@@ -60,20 +66,24 @@ export function ChoreCard({
   const checkRef = useRef<HTMLButtonElement>(null);
   const isMe = assignee?.uid === currentUid;
   const canAct = !done && !!onComplete;
+  const canSkip = canAct && !!onSkip;
 
-  // ----- Swipe right to complete -----
-  const [dx, setDx] = useState(0);
-  const drag = useRef<{ x: number; y: number; active: boolean } | null>(null);
+  // ----- Swipe handling -----
+  const [revealed, setRevealed] = useState(false); // Skip button showing
+  const [dragOffset, setDragOffset] = useState<number | null>(null);
+  const drag = useRef<{ x: number; y: number; base: number; active: boolean; crossed: boolean } | null>(null);
+  const offset = dragOffset ?? (revealed ? -SKIP_WIDTH : 0);
 
   function checkOrigin() {
     const r = checkRef.current?.getBoundingClientRect();
-    return r ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+    return r
+      ? { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+      : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   }
 
   function onPointerDown(e: React.PointerEvent) {
-    if (!canAct || busy) return;
-    if (e.pointerType === "mouse") return; // swiping is for touch; mouse users click the check
-    drag.current = { x: e.clientX, y: e.clientY, active: false };
+    if (!canAct || busy || e.pointerType === "mouse") return; // mouse users click the buttons
+    drag.current = { x: e.clientX, y: e.clientY, base: revealed ? -SKIP_WIDTH : 0, active: false, crossed: false };
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -82,34 +92,71 @@ export function ChoreCard({
     const mx = e.clientX - d.x;
     const my = e.clientY - d.y;
     if (!d.active) {
-      if (mx > 10 && Math.abs(mx) > Math.abs(my) * 1.5) {
+      const horizontal = Math.abs(mx) > 10 && Math.abs(mx) > Math.abs(my) * 1.5;
+      if (horizontal && (mx > 0 || canSkip || d.base < 0)) {
         d.active = true;
         e.currentTarget.setPointerCapture(e.pointerId);
-      } else if (Math.abs(my) > 10 || mx < -10) {
-        drag.current = null; // vertical scroll or left swipe: let the page handle it
+      } else if (Math.abs(my) > 10) {
+        drag.current = null; // vertical scroll: let the page handle it
+        return;
+      } else {
         return;
       }
     }
-    if (d.active) setDx(Math.max(0, Math.min(SWIPE_MAX, mx)));
+    const next = Math.max(canSkip ? -(SKIP_WIDTH + 24) : 0, Math.min(COMPLETE_MAX, d.base + mx));
+    // A small tick when the swipe passes the "complete" point
+    if (next >= COMPLETE_TRIGGER && !d.crossed) {
+      d.crossed = true;
+      haptic("light");
+    } else if (next < COMPLETE_TRIGGER) {
+      d.crossed = false;
+    }
+    setDragOffset(next);
   }
 
   function endDrag() {
-    const triggered = drag.current?.active && dx >= SWIPE_TRIGGER;
+    const d = drag.current;
     drag.current = null;
-    setDx(0);
-    if (triggered) onComplete?.(checkOrigin());
+    if (!d?.active || dragOffset === null) {
+      setDragOffset(null);
+      return;
+    }
+    const final = dragOffset;
+    setDragOffset(null);
+    if (final >= COMPLETE_TRIGGER) {
+      setRevealed(false);
+      onComplete?.(checkOrigin());
+    } else {
+      setRevealed(canSkip && final < -SKIP_WIDTH / 2);
+    }
   }
 
   return (
     <div className="relative">
-      {/* Revealed while swiping */}
-      {dx > 0 ? (
+      {/* Revealed behind the card while swiping */}
+      {offset > 0 ? (
         <div
           className="absolute inset-0 flex items-center rounded-[20px] bg-emerald-500 pl-5 text-white"
-          style={{ opacity: Math.min(1, dx / SWIPE_TRIGGER) }}
+          style={{ opacity: Math.min(1, offset / COMPLETE_TRIGGER) }}
           aria-hidden="true">
           <Check size={26} strokeWidth={3} />
-          <span className="ml-2 text-sm font-extrabold">{dx >= SWIPE_TRIGGER ? "Release to complete" : "Complete"}</span>
+          <span className="ml-2 text-sm font-extrabold">{offset >= COMPLETE_TRIGGER ? "Release to complete" : "Complete"}</span>
+        </div>
+      ) : null}
+      {offset < 0 && canSkip ? (
+        <div className="absolute inset-0 flex justify-end overflow-hidden rounded-[20px] bg-gray-200">
+          <button
+            type="button"
+            onClick={() => {
+              setRevealed(false);
+              onSkip?.();
+            }}
+            tabIndex={revealed ? 0 : -1}
+            className="flex h-full flex-col items-center justify-center gap-1 text-xs font-extrabold text-gray-700"
+            style={{ width: SKIP_WIDTH }}>
+            <SkipForward size={20} aria-hidden="true" />
+            Skip
+          </button>
         </div>
       ) : null}
 
@@ -118,13 +165,21 @@ export function ChoreCard({
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onClickCapture={(e) => {
+          // Tapping a card with Skip showing just closes it
+          if (revealed) {
+            e.stopPropagation();
+            e.preventDefault();
+            setRevealed(false);
+          }
+        }}
         className={clsx(
           "cq-card relative flex touch-pan-y select-none items-center gap-3 p-3 pr-2",
-          dx === 0 && "transition-transform duration-200",
+          dragOffset === null && "transition-transform duration-200",
           overdue && "ring-1 ring-amber-200",
           done && "opacity-70",
         )}
-        style={{ transform: dx ? `translateX(${dx}px)` : undefined }}>
+        style={{ transform: offset ? `translateX(${offset}px)` : undefined }}>
         <span
           className={clsx(
             "grid h-12 w-12 shrink-0 place-items-center rounded-2xl text-2xl",
@@ -149,16 +204,23 @@ export function ChoreCard({
 
         <PointsPill points={chore.points} />
 
-        {canAct && onSkip ? (
-          <button
-            type="button"
-            onClick={onSkip}
-            disabled={busy}
-            className="hidden h-10 w-10 shrink-0 place-items-center rounded-full text-faint transition hover:bg-surface-2 hover:text-ink disabled:opacity-40 sm:grid"
-            aria-label={`Skip ${name}`}
-            title="Skip">
-            <SkipForward size={18} />
-          </button>
+        {canSkip ? (
+          <>
+            {/* Desktop: visible skip button */}
+            <button
+              type="button"
+              onClick={onSkip}
+              disabled={busy}
+              className="hidden h-11 w-11 shrink-0 place-items-center rounded-full text-faint transition hover:bg-surface-2 hover:text-ink disabled:opacity-40 sm:grid"
+              aria-label={`Skip ${name}`}
+              title="Skip">
+              <SkipForward size={18} />
+            </button>
+            {/* Phones: swipe left; screen readers still get a button */}
+            <button type="button" onClick={onSkip} disabled={busy} className="sr-only sm:hidden">
+              Skip {name}
+            </button>
+          </>
         ) : null}
 
         {done ? (
@@ -171,26 +233,12 @@ export function ChoreCard({
             type="button"
             onClick={() => onComplete?.(checkOrigin())}
             disabled={busy}
-            className="group grid h-11 w-11 shrink-0 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600 transition-all hover:bg-emerald-500 hover:text-white active:scale-90 disabled:opacity-60"
+            className="group grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-emerald-500 text-emerald-600 transition-all hover:bg-emerald-500 hover:text-white active:scale-90 active:bg-emerald-500 active:text-white disabled:opacity-60"
             aria-label={`Complete ${name} for ${chore.points} points`}>
-            {busy ? <Spinner /> : <Check size={22} strokeWidth={3} className="opacity-40 transition group-hover:opacity-100" />}
+            {busy ? <Spinner /> : <Check size={22} strokeWidth={3} className="opacity-40 transition group-hover:opacity-100 group-active:opacity-100" />}
           </button>
         ) : null}
       </div>
-
-      {/* Phones: skip lives under the card to keep the row uncluttered */}
-      {canAct && onSkip ? (
-        <div className="mt-1 flex justify-end pr-2 sm:hidden">
-          <button
-            type="button"
-            onClick={onSkip}
-            disabled={busy}
-            className="rounded-lg px-2 py-0.5 text-[11px] font-bold text-faint hover:text-ink disabled:opacity-40"
-            aria-label={`Skip ${name}`}>
-            Skip
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }

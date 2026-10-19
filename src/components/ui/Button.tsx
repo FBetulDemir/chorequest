@@ -17,9 +17,10 @@ const VARIANTS: Record<Variant, string> = {
 };
 
 const SIZES: Record<Size, string> = {
-  sm: "h-9 px-3 text-xs rounded-xl gap-1.5",
-  md: "h-11 px-4 text-sm rounded-xl gap-2",
-  lg: "h-13 px-6 text-base rounded-2xl gap-2",
+  // Phones get 44px+ tap targets; desktop can be more compact
+  sm: "h-11 sm:h-9 px-3.5 sm:px-3 text-sm sm:text-xs rounded-xl gap-1.5",
+  md: "h-12 sm:h-11 px-4 text-[15px] sm:text-sm rounded-xl gap-2",
+  lg: "h-14 sm:h-13 px-6 text-base rounded-2xl gap-2",
 };
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -88,7 +89,7 @@ export function IconButton({
     <button
       type={type}
       className={clsx(
-        "inline-grid h-10 w-10 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink active:scale-95 disabled:opacity-50",
+        "inline-grid h-11 w-11 shrink-0 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-ink active:scale-95 disabled:opacity-50",
         className,
       )}
       {...rest}
