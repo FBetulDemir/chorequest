@@ -38,15 +38,22 @@ export type ChoreTemplateInput = Omit<
   "id" | "createdAt" | "updatedAt"
 >;
 
+export type LedgerEntryType = "complete" | "skip" | "undo";
+
 export type PointsLedgerEntry = {
   id: string;
   actorUid: string;
   delta: number;
-  reason: string;
+  reason: string; // human-readable, e.g. "Completed: 🧹 Sweep". Older entries rely on its prefix.
   createdAt: number;
 
-  templateId?: string; // NEW
-  dayKey?: string; // NEW e.g. "2026-01-17"
+  templateId?: string;
+  dayKey?: string; // e.g. "2026-01-17"
+
+  // Added in phase 1. Entries written before that only have `reason`.
+  type?: LedgerEntryType;
+  targetEntryId?: string; // undo: the completion entry it cancels
+  targetUid?: string; // undo: who originally earned the points
 };
 
 export type ChoreSchedule = {
