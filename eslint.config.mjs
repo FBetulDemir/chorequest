@@ -17,7 +17,8 @@ const eslintConfig = defineConfig([
     // Native projects and build output (contain copies of the built web app)
     "android/**",
     "ios/**",
-    "out/**",
+    // Cloud Functions have their own package and build
+    "functions/**",
   ]),
 ]);
 
