@@ -1,54 +1,37 @@
+// Generates the PWA / app icons from the SVG sources in public/icons.
+// Run with: node scripts/generate-icons.js
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 
-const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
-const inputSvg = path.join(__dirname, '../public/icons/icon.svg');
-const outputDir = path.join(__dirname, '../public/icons');
+const iconDir = path.join(__dirname, '../public/icons');
+const roundedSvg = path.join(iconDir, 'icon.svg'); // "any" purpose, rounded corners
+const maskableSvg = path.join(iconDir, 'icon-maskable.svg'); // full bleed, OS crops it
+
+const anySizes = [72, 96, 128, 144, 152, 192, 384, 512];
+const maskableSizes = [192, 512];
+
+async function render(input, size, file) {
+  await sharp(input, { density: 384 }).resize(size, size).png().toFile(path.join(iconDir, file));
+  console.log(`Created: ${file}`);
+}
 
 async function generateIcons() {
-  // Ensure output directory exists
-  if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
-  }
+  if (!fs.existsSync(iconDir)) fs.mkdirSync(iconDir, { recursive: true });
 
-  console.log('Generating PWA icons...');
+  for (const size of anySizes) await render(roundedSvg, size, `icon-${size}x${size}.png`);
+  for (const size of maskableSizes) await render(maskableSvg, size, `maskable-${size}x${size}.png`);
 
-  for (const size of sizes) {
-    const outputPath = path.join(outputDir, `icon-${size}x${size}.png`);
+  // iOS rounds the corners itself and doesn't allow transparency
+  await render(maskableSvg, 180, 'apple-touch-icon.png');
 
-    await sharp(inputSvg)
-      .resize(size, size)
-      .png()
-      .toFile(outputPath);
-
-    console.log(`Created: icon-${size}x${size}.png`);
-  }
-
-  // Also create apple-touch-icon
-  await sharp(inputSvg)
-    .resize(180, 180)
-    .png()
-    .toFile(path.join(outputDir, 'apple-touch-icon.png'));
-
-  console.log('Created: apple-touch-icon.png');
-
-  // Create favicon
-  await sharp(inputSvg)
-    .resize(32, 32)
-    .png()
-    .toFile(path.join(outputDir, 'favicon-32x32.png'));
-
-  console.log('Created: favicon-32x32.png');
-
-  await sharp(inputSvg)
-    .resize(16, 16)
-    .png()
-    .toFile(path.join(outputDir, 'favicon-16x16.png'));
-
-  console.log('Created: favicon-16x16.png');
+  await render(roundedSvg, 32, 'favicon-32x32.png');
+  await render(roundedSvg, 16, 'favicon-16x16.png');
 
   console.log('\nAll icons generated successfully!');
 }
 
-generateIcons().catch(console.error);
+generateIcons().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

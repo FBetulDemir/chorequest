@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chorequest-v2';
+const CACHE_NAME = 'chorequest-v3';
 
 // Only cache truly static assets - NOT pages that require auth
 const STATIC_ASSETS = [
