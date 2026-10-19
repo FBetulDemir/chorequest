@@ -498,7 +498,7 @@ function ChoresInner() {
       {toast ? (
         <div className="fixed bottom-6 left-1/2 z-80 -translate-x-1/2">
           <div
-            className="rounded-2xl border bg-white px-4 py-3 text-sm shadow-lg"
+            className="rounded-2xl border bg-surface px-4 py-3 text-sm shadow-lg"
             style={{ borderColor: "var(--cq-border)" }}>
             {toast}
           </div>
@@ -509,7 +509,7 @@ function ChoresInner() {
       {open ? (
         <div className="fixed inset-0 z-60 bg-black/40">
           <div className="h-full w-full p-4 sm:p-6 grid place-items-center">
-            <div className="w-full max-w-2xl rounded-2xl border bg-white shadow-lg overflow-hidden">
+            <div className="w-full max-w-2xl rounded-2xl border bg-surface shadow-lg overflow-hidden">
               {/* header */}
               <div className="flex items-center justify-between px-6 py-4 border-b">
                 <div className="text-lg font-semibold">
@@ -553,7 +553,7 @@ function ChoresInner() {
                                 "h-9 w-9 rounded-lg border grid place-items-center text-lg transition-all " +
                                 (icon === ic
                                   ? "bg-purple-100 border-purple-300 scale-110"
-                                  : "bg-white border-gray-200 hover:border-purple-200 hover:bg-purple-50")
+                                  : "bg-surface border-gray-200 hover:border-purple-200 hover:bg-purple-50")
                               }
                               onClick={() => setIcon(ic)}
                               type="button">
@@ -592,7 +592,7 @@ function ChoresInner() {
                         onClick={() => setPoints(p)}
                         className={
                           "rounded-xl border p-2 sm:p-3 text-center text-sm " +
-                          (points === p ? "text-white" : "bg-white")
+                          (points === p ? "text-white" : "bg-surface")
                         }
                         style={
                           points === p
@@ -628,7 +628,7 @@ function ChoresInner() {
                         onClick={() => setFrequency(f)}
                         className={
                           "rounded-xl border px-2 sm:px-3 py-2 sm:py-3 text-sm " +
-                          (frequency === f ? "text-white" : "bg-white")
+                          (frequency === f ? "text-white" : "bg-surface")
                         }
                         style={
                           frequency === f
@@ -673,7 +673,7 @@ function ChoresInner() {
                   </div>
 
                   {assigneeMode === "fixed" ? (
-                    <div className="mt-3 rounded-2xl border bg-white p-4">
+                    <div className="mt-3 rounded-2xl border bg-surface p-4">
                       <div className="text-sm font-medium text-gray-700 mb-2">
                         Select member
                       </div>
@@ -743,7 +743,7 @@ function ModeCard({
       onClick={onClick}
       className={
         "w-full text-left rounded-2xl border p-4 transition " +
-        (selected ? "border-purple-200 bg-purple-50" : "bg-white")
+        (selected ? "border-purple-200 bg-purple-50" : "bg-surface")
       }
       style={!selected ? { borderColor: "var(--cq-border)" } : {}}>
       <div className="font-semibold">{title}</div>

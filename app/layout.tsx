@@ -1,11 +1,20 @@
 import "@/app/globals.css";
 import ClientShell from "@/src/components/ClientShell";
 import { AuthProvider } from "@/src/components/AuthProvider";
+import { themeInitScript } from "@/src/lib/themeScript";
 import type { Metadata, Viewport } from "next";
+import { Nunito } from "next/font/google";
+
+// Rounded and friendly; latin-ext covers Swedish and Turkish letters.
+const nunito = Nunito({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-nunito",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "ChoreQuest",
-  description: "Gamified household chore management app",
+  description: "Share household chores fairly, earn points and win the week.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -27,7 +36,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#7c3aed",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf7ff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f0b1a" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -39,8 +51,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>
+    // data-theme is set by the inline script before hydration
+    <html lang="en" className={nunito.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="font-sans">
         <AuthProvider>
           <ClientShell>{children}</ClientShell>
         </AuthProvider>

@@ -465,7 +465,7 @@ function OccurrenceCard({
           className="
   inline-flex items-center justify-center gap-2
   rounded-xl px-4 py-3 text-sm font-medium
-  bg-white text-gray-700
+  bg-surface text-gray-700
   border border-gray-200
   shadow-sm
   hover:bg-gray-50 hover:text-gray-900

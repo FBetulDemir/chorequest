@@ -17,6 +17,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     email: d.email ?? null,
     name: d.name ?? "",
     householdId: d.householdId ?? null,
+    avatar: d.avatar ?? null,
     createdAt: Number(d.createdAt ?? Date.now()),
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };

@@ -193,7 +193,7 @@ function PlanInner() {
             className={
               "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all " +
               (view === "upcoming"
-                ? "bg-white text-gray-900 shadow-sm"
+                ? "bg-surface text-gray-900 shadow-sm"
                 : "text-gray-500 hover:text-gray-700")
             }>
             <span>⏳</span>
@@ -208,7 +208,7 @@ function PlanInner() {
             className={
               "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all " +
               (view === "completed"
-                ? "bg-white text-gray-900 shadow-sm"
+                ? "bg-surface text-gray-900 shadow-sm"
                 : "text-gray-500 hover:text-gray-700")
             }>
             <span>✓</span>
@@ -301,7 +301,7 @@ function PlanInner() {
                       {isBusy ? "..." : `✓ Complete (+${o.chore.points})`}
                     </button>
                     <button
-                      className="px-4 py-2.5 rounded-xl text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium bg-surface text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
                       onClick={() => skip(o)}
                       disabled={isBusy}
                       type="button">

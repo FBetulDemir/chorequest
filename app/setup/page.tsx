@@ -209,7 +209,7 @@ function SetupInner() {
                   join your household:
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 px-4 py-3 rounded-xl bg-white border-2 border-dashed border-purple-200 font-mono text-lg text-center text-purple-600 font-bold tracking-wider">
+                  <div className="flex-1 px-4 py-3 rounded-xl bg-surface border-2 border-dashed border-purple-200 font-mono text-lg text-center text-purple-600 font-bold tracking-wider">
                     {householdCode || "—"}
                   </div>
                   <button

@@ -5,6 +5,7 @@ import { getUserProfile } from "@/src/lib/profile";
 export type HouseholdMember = {
   uid: string;
   name: string;
+  avatar?: string | null;
 };
 
 /** UIDs marked as members in a household's `members` map. */
@@ -20,7 +21,11 @@ export async function loadMembers(uids: string[]): Promise<HouseholdMember[]> {
     uids.map(async (uid) => {
       try {
         const p = await getUserProfile(uid);
-        return { uid, name: p?.name?.trim() ? p.name : uid.slice(0, 6) };
+        return {
+          uid,
+          name: p?.name?.trim() ? p.name : uid.slice(0, 6),
+          avatar: p?.avatar ?? null,
+        };
       } catch {
         return { uid, name: uid.slice(0, 6) };
       }

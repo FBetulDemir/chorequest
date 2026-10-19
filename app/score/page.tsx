@@ -166,7 +166,7 @@ function ScoreInner() {
                 }>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-4 min-w-0 flex-1">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white border-2 border-gray-100 font-bold text-gray-600 shrink-0">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-surface border-2 border-gray-100 font-bold text-gray-600 shrink-0">
                       {rankBadge ?? `#${idx + 1}`}
                     </div>
 
@@ -247,7 +247,7 @@ function TabButton({
       onClick={onClick}
       className={
         "rounded-2xl border px-5 py-4 text-center text-sm transition " +
-        (active ? "text-white" : "bg-white")
+        (active ? "text-white" : "bg-surface")
       }
       style={
         active
