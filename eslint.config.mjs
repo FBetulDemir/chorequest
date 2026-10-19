@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Plain Node scripts
     "scripts/**",
+    // Native projects and build output (contain copies of the built web app)
+    "android/**",
+    "ios/**",
+    "out/**",
   ]),
 ]);
 

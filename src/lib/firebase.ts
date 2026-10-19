@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, indexedDBLocalPersistence, initializeAuth, type Auth } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
 import {
   getFirestore,
   initializeFirestore,
@@ -35,5 +36,17 @@ function createDb(): Firestore {
   }
 }
 
-export const auth = getAuth(app);
+function createAuth(): Auth {
+  if (!Capacitor.isNativePlatform()) return getAuth(app);
+  try {
+    // In the iOS/Android web view, getAuth() can hang while loading its popup
+    // helper; initializing with explicit persistence avoids that.
+    return initializeAuth(app, { persistence: indexedDBLocalPersistence });
+  } catch {
+    // Already initialised (e.g. after a hot reload)
+    return getAuth(app);
+  }
+}
+
+export const auth = createAuth();
 export const db = createDb();
