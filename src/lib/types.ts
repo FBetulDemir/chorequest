@@ -6,6 +6,7 @@ export type UserProfile = {
   email: string | null;
   name: string; // display name you choose
   householdId: string | null;
+  avatar?: string | null; // emoji picked in setup/profile (added in phase 2)
   createdAt: number;
   updatedAt: number;
 };

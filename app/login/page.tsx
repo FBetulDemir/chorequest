@@ -1,9 +1,12 @@
 "use client";
 
 import React, { Suspense, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { useAuth } from "@/src/components/AuthProvider";
 import { friendlyError } from "@/src/lib/errors";
+import { Mascot } from "@/src/components/ui/Mascot";
 
 type Mode = "login" | "signup" | "reset";
 
@@ -36,7 +39,7 @@ function LoginForm() {
     return next.startsWith("/") && !next.startsWith("//") ? next : "/";
   }, [params]);
 
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>(() => (params.get("mode") === "signup" ? "signup" : "login"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -78,21 +81,19 @@ function LoginForm() {
   const copy = COPY[mode];
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center py-6">
+    <div className="flex min-h-screen flex-col items-center justify-center py-6">
+      <div className="mb-3 w-full max-w-md">
+        <Link href="/welcome" className="inline-flex items-center gap-1 text-sm font-bold text-muted hover:text-ink">
+          <ChevronLeft size={16} aria-hidden="true" /> Back
+        </Link>
+      </div>
       <div className="cq-card w-full max-w-md p-6 sm:p-8">
-        <div
-          className="mx-auto h-14 w-14 rounded-2xl grid place-items-center text-2xl text-white font-bold"
-          style={{
-            background: "linear-gradient(135deg, var(--cq-purple), var(--cq-pink))",
-          }}
-          aria-hidden="true">
-          ✦
-        </div>
+        <Mascot mood={mode === "signup" ? "celebrate" : "happy"} size={80} className="mx-auto text-ink" />
 
-        <h1 className="mt-4 text-center text-2xl font-bold text-gray-900">
+        <h1 className="mt-3 text-center text-2xl font-extrabold tracking-tight text-ink">
           {copy.title}
         </h1>
-        <p className="mt-1 text-center text-sm text-gray-500">{copy.subtitle}</p>
+        <p className="mt-1 text-center text-sm text-muted">{copy.subtitle}</p>
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4">
           <div>

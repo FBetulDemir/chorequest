@@ -304,11 +304,18 @@ Also done in Phase 1:
 
 ### Phase 2: Look and feel (3–4 weeks)
 
-1. Design tokens, font, dark mode, UI component library (§6.1)
-2. New onboarding flow and login screen (§5.1)
-3. Today redesign: swipe actions, celebration, friendly dates, skeletons (§5.3, §5.7)
-4. Navigation restructure + Profile/Settings screen (§5.2)
-5. Logo, mascot, app icon
+- [x] Design tokens, Nunito font, dark mode (System/Light/Dark), UI component library (§6.1)
+- [x] Welcome tour and step-by-step setup wizard: name and avatar, household, invite, starter chores (§5.1)
+- [x] Today redesign (§5.3, §5.7):
+  - progress ring, streak, "Just me" filter, overdue "Catch up" section
+  - swipe to complete, confetti, haptics, Undo toast
+  - friendly dates and skeleton loaders
+- [x] Navigation: Today · Plan · Leaders · Household tabs, plus a Profile/Settings screen (§5.2)
+- [x] Mascot ("Tidy"), new app icon (rounded and maskable), manifest fixes
+- [x] Restyled Plan (grouped by day), Activity (with undo), Leaderboard (podium, badges), monthly scores
+- [x] In-app sheets replace `confirm()`; shared Button/Sheet/Toast/Avatar components
+- [ ] Brand illustrations from a designer (the mascot is a placeholder-quality SVG)
+- [ ] Day picker for weekly/monthly chores (§5.4). Needs a schedule change that the deployed app can't read yet
 
 ### Phase 3: Native app (2–3 weeks)
 

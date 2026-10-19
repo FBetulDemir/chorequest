@@ -1,20 +1,143 @@
 @import "tailwindcss";
 
+/* `dark:` follows the resolved theme set on <html data-theme="…"> */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------- Design tokens ---------- */
+
 :root {
-  --cq-bg: #fbf6ff;
-  --cq-card: #ffffff;
-  --cq-border: rgba(17, 24, 39, 0.08);
-  --cq-text: #111827;
-  --cq-muted: #6b7280;
+  color-scheme: light;
+
+  --cq-bg: #faf7ff;
+  --cq-surface: #ffffff;
+  --cq-surface-2: #f5f1fc;
+  --cq-glass: rgba(255, 255, 255, 0.78);
+
+  --cq-ink: #1f1633;
+  --cq-muted: #6b6480;
+  --cq-faint: #9a93ad;
+  --cq-line: rgba(31, 22, 51, 0.09);
+
+  --cq-brand: #8b5cf6;
+  --cq-brand-strong: #6d28d9;
+  --cq-brand-soft: rgba(139, 92, 246, 0.12);
+  --cq-accent: #ec4899;
 
   --cq-purple: #a855f7;
   --cq-pink: #ec4899;
+  --cq-gradient: linear-gradient(135deg, #8b5cf6 0%, #d946ef 55%, #ec4899 100%);
 
-  --cq-chip: rgba(168, 85, 247, 0.12);
-  --cq-chip-text: #7c3aed;
+  --cq-chip: rgba(139, 92, 246, 0.12);
+  --cq-chip-text: #6d28d9;
 
-  --cq-shadow: 0 12px 40px rgba(17, 24, 39, 0.08);
+  --cq-shadow: 0 1px 2px rgba(31, 22, 51, 0.04), 0 8px 24px rgba(31, 22, 51, 0.06);
+  --cq-shadow-lg: 0 2px 4px rgba(31, 22, 51, 0.05), 0 18px 48px rgba(31, 22, 51, 0.12);
+
+  /* Kept for older class names */
+  --cq-card: var(--cq-surface);
+  --cq-border: var(--cq-line);
+  --cq-text: var(--cq-ink);
 }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --cq-bg: #0f0b1a;
+  --cq-surface: #1a1428;
+  --cq-surface-2: #231b35;
+  --cq-glass: rgba(26, 20, 40, 0.82);
+
+  --cq-ink: #f3f0fa;
+  --cq-muted: #b3abc7;
+  --cq-faint: #7f7796;
+  --cq-line: rgba(255, 255, 255, 0.09);
+
+  --cq-brand: #a78bfa;
+  --cq-brand-strong: #c4b5fd;
+  --cq-brand-soft: rgba(167, 139, 250, 0.16);
+
+  --cq-chip: rgba(167, 139, 250, 0.16);
+  --cq-chip-text: #d8ccff;
+
+  --cq-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --cq-shadow-lg: 0 2px 4px rgba(0, 0, 0, 0.35), 0 18px 48px rgba(0, 0, 0, 0.45);
+
+  /*
+   * Remap the Tailwind shades the pages use, so classes like
+   * `bg-emerald-50 text-emerald-700` or `text-gray-500` adapt without edits.
+   */
+  --color-gray-50: #211a31;
+  --color-gray-100: #2a2240;
+  --color-gray-200: #3a3152;
+  --color-gray-300: #4f4668;
+  --color-gray-400: #7f7796;
+  --color-gray-500: #a39bb8;
+  --color-gray-600: #c3bcd6;
+  --color-gray-700: #dcd6ea;
+  --color-gray-800: #ebe7f4;
+  --color-gray-900: #f6f3fb;
+
+  --color-purple-50: rgba(167, 139, 250, 0.12);
+  --color-purple-100: rgba(167, 139, 250, 0.2);
+  --color-purple-200: rgba(167, 139, 250, 0.32);
+  --color-purple-300: rgba(167, 139, 250, 0.45);
+  --color-purple-600: #c4b5fd;
+  --color-purple-700: #d8ccff;
+  --color-purple-900: #ede9fe;
+
+  --color-pink-50: rgba(244, 114, 182, 0.12);
+  --color-pink-200: rgba(244, 114, 182, 0.3);
+  --color-pink-700: #f9a8d4;
+
+  --color-emerald-50: rgba(52, 211, 153, 0.12);
+  --color-emerald-100: rgba(52, 211, 153, 0.2);
+  --color-emerald-200: rgba(52, 211, 153, 0.3);
+  --color-emerald-600: #6ee7b7;
+  --color-emerald-700: #a7f3d0;
+
+  --color-amber-50: rgba(251, 191, 36, 0.12);
+  --color-amber-100: rgba(251, 191, 36, 0.2);
+  --color-amber-200: rgba(251, 191, 36, 0.3);
+  --color-amber-600: #fcd34d;
+  --color-amber-700: #fde68a;
+
+  --color-orange-50: rgba(251, 146, 60, 0.12);
+  --color-orange-100: rgba(251, 146, 60, 0.2);
+  --color-orange-700: #fdba74;
+
+  --color-blue-50: rgba(96, 165, 250, 0.12);
+  --color-blue-100: rgba(96, 165, 250, 0.2);
+  --color-blue-600: #93c5fd;
+  --color-blue-700: #bfdbfe;
+
+  --color-red-50: rgba(248, 113, 113, 0.12);
+  --color-red-100: rgba(248, 113, 113, 0.2);
+  --color-red-600: #fca5a5;
+  --color-red-700: #fecaca;
+}
+
+/* Semantic utilities: bg-surface, text-ink, border-line, font-sans … */
+@theme inline {
+  --color-canvas: var(--cq-bg);
+  --color-surface: var(--cq-surface);
+  --color-surface-2: var(--cq-surface-2);
+  --color-glass: var(--cq-glass);
+  --color-ink: var(--cq-ink);
+  --color-muted: var(--cq-muted);
+  --color-faint: var(--cq-faint);
+  --color-line: var(--cq-line);
+  --color-brand: var(--cq-brand);
+  --color-brand-strong: var(--cq-brand-strong);
+  --color-brand-soft: var(--cq-brand-soft);
+  --color-accent: var(--cq-accent);
+
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --shadow-card: var(--cq-shadow);
+  --shadow-lifted: var(--cq-shadow-lg);
+}
+
+/* ---------- Base ---------- */
 
 html,
 body {
@@ -22,93 +145,180 @@ body {
 }
 
 body {
-  color: var(--cq-text);
-  /* background:
-    radial-gradient(
-      900px 500px at 15% 0%,
-      rgba(168, 85, 247, 0.1),
-      transparent 60%
-    ),
-    radial-gradient(
-      900px 500px at 85% 0%,
-      rgba(236, 72, 153, 0.1),
-      transparent 60%
-    ), */
+  color: var(--cq-ink);
   background-color: var(--cq-bg);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
+
+:focus-visible {
+  outline: 2px solid var(--cq-brand);
+  outline-offset: 2px;
+}
+
+/* iOS notch / home-indicator safe areas */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ---------- Motion ---------- */
+
+@keyframes cq-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes cq-float-up {
+  0% { transform: translate(-50%, 0) scale(0.8); opacity: 0; }
+  15% { opacity: 1; transform: translate(-50%, -8px) scale(1.05); }
+  100% { transform: translate(-50%, -70px) scale(1); opacity: 0; }
+}
+@keyframes cq-confetti {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
+}
+@keyframes cq-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+@keyframes cq-slide-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes cq-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cq-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@utility animate-pop {
+  animation: cq-pop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@utility animate-slide-up {
+  animation: cq-slide-up 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility animate-fade-in {
+  animation: cq-fade-in 200ms ease-out both;
+}
+@utility animate-bob {
+  animation: cq-bob 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ---------- Shared component classes ---------- */
 
 @layer components {
   .cq-container {
-    @apply mx-auto max-w-5xl px-6;
+    @apply mx-auto max-w-5xl px-4 sm:px-6;
   }
 
   .cq-card {
-    background: var(--cq-card);
-    border: 1px solid var(--cq-border);
-    border-radius: 16px;
+    background: var(--cq-surface);
+    border: 1px solid var(--cq-line);
+    border-radius: 20px;
     box-shadow: var(--cq-shadow);
   }
 
   .cq-card-soft {
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid var(--cq-border);
+    background: var(--cq-surface-2);
+    border: 1px solid var(--cq-line);
     border-radius: 16px;
   }
 
   .cq-title {
-    @apply text-xl font-semibold;
+    @apply text-xl font-extrabold tracking-tight;
   }
 
   .cq-subtitle {
-    @apply text-sm text-gray-500;
+    @apply text-sm;
+    color: var(--cq-muted);
   }
 
   .cq-btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition;
-    border: 1px solid var(--cq-border);
-    background: white;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition;
+    border: 1px solid var(--cq-line);
+    background: var(--cq-surface);
+    color: var(--cq-ink);
   }
 
   .cq-btn:hover {
-    @apply bg-gray-50;
+    background: var(--cq-surface-2);
   }
 
   .cq-btn:disabled {
-    @apply opacity-50 cursor-not-allowed;
+    @apply cursor-not-allowed opacity-50;
   }
 
   .cq-btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition;
-    background: linear-gradient(90deg, var(--cq-purple), var(--cq-pink));
-    box-shadow: 0 10px 22px rgba(168, 85, 247, 0.25);
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold text-white transition;
+    background: var(--cq-gradient);
+    box-shadow: 0 8px 20px rgba(139, 92, 246, 0.28);
   }
 
   .cq-btn-primary:hover {
-    @apply shadow-lg;
     transform: translateY(-1px);
+    box-shadow: 0 12px 26px rgba(139, 92, 246, 0.34);
+  }
+
+  .cq-btn-primary:active {
+    transform: translateY(0) scale(0.98);
   }
 
   .cq-btn-primary:disabled {
-    @apply opacity-50 cursor-not-allowed;
+    @apply cursor-not-allowed opacity-50;
+    transform: none;
   }
 
   .cq-pill {
-    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium;
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold;
     background: var(--cq-chip);
     color: var(--cq-chip-text);
   }
 
   .cq-input {
-    @apply w-full rounded-xl border p-3 text-sm outline-none;
-    border-color: var(--cq-border);
-    background: white;
+    @apply w-full rounded-xl border p-3 text-sm outline-none transition;
+    border-color: var(--cq-line);
+    background: var(--cq-surface);
+    color: var(--cq-ink);
+  }
+
+  .cq-input::placeholder {
+    color: var(--cq-faint);
   }
 
   .cq-input:focus {
-    @apply ring-2 ring-purple-200 border-purple-300;
+    border-color: var(--cq-brand);
+    box-shadow: 0 0 0 3px var(--cq-brand-soft);
   }
 
   .cq-divider {
-    border-top: 1px solid var(--cq-border);
+    border-top: 1px solid var(--cq-line);
+  }
+
+  .cq-skeleton {
+    border-radius: 12px;
+    background: linear-gradient(
+      90deg,
+      var(--cq-surface-2) 0%,
+      var(--cq-line) 50%,
+      var(--cq-surface-2) 100%
+    );
+    background-size: 800px 100%;
+    animation: cq-shimmer 1.4s linear infinite;
   }
 }

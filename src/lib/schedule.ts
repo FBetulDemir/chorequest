@@ -1,7 +1,7 @@
 // src/lib/schedule.ts
 import type { ChoreTemplate } from "@/src/lib/types";
 
-export type OccurrenceBucket = "today" | "next3" | "upcoming";
+export type OccurrenceBucket = "overdue" | "today" | "next3" | "upcoming";
 
 export type Occurrence = {
   templateId: string;
@@ -180,6 +180,61 @@ export function buildOccurrences(
       seasonCount += 1;
       if (seasonCount > 4) break; // Safety limit: ~1 year
     }
+  }
+
+  out.sort((a, b) => a.dateMs - b.dateMs);
+  return out;
+}
+
+/**
+ * The most recent missed occurrence of each weekly / monthly / seasonal chore,
+ * within the last `lookbackDays` (today excluded). Daily chores are left out on
+ * purpose: yesterday's dishes shouldn't pile up.
+ *
+ * Callers decide whether it is really overdue by checking the ledger.
+ */
+export function buildPastOccurrences(
+  templates: ChoreTemplate[],
+  nowMs: number,
+  lookbackDays: number,
+): Occurrence[] {
+  const base = startOfLocalDayMs(nowMs);
+  const out: Occurrence[] = [];
+
+  for (const t of templates) {
+    const tid = templateIdOf(t);
+    if (!tid) continue;
+
+    const freq = normalizeFreq(t.frequency);
+    if (freq === "daily") continue;
+
+    const anchor = startOfLocalDayMs(Number(t.createdAt ?? nowMs));
+    const step = (i: number) =>
+      freq === "weekly"
+        ? addDaysLocal(anchor, i * 7)
+        : freq === "monthly"
+          ? addMonthsLocal(anchor, i)
+          : addDaysLocal(anchor, i * 90);
+
+    // Walk forward to the last occurrence before today
+    let last: number | null = null;
+    for (let i = 0; i < 2000; i++) {
+      const dateMs = step(i);
+      if (dateMs >= base) break;
+      last = dateMs;
+    }
+    if (last === null) continue;
+
+    const diffDays = Math.round((base - last) / 86400000);
+    if (diffDays > lookbackDays) continue;
+
+    out.push({
+      templateId: tid,
+      dateMs: last,
+      dayKey: dayKeyFromTs(last),
+      bucket: "overdue",
+      chore: t,
+    });
   }
 
   out.sort((a, b) => a.dateMs - b.dateMs);

@@ -38,6 +38,7 @@ function toUserProfile(uid: string, d: DocumentData): UserProfile {
     email: d.email ?? null,
     name: d.name ?? "",
     householdId: d.householdId ?? null,
+    avatar: d.avatar ?? null,
     createdAt: Number(d.createdAt ?? Date.now()),
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };
@@ -149,7 +150,9 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     const rawMembers = own(membersState, membersKey)?.value ?? [];
     const members = profile?.name?.trim()
       ? rawMembers
-          .map((m) => (m.uid === profile.uid ? { ...m, name: profile.name } : m))
+          .map((m) =>
+            m.uid === profile.uid ? { ...m, name: profile.name, avatar: profile.avatar ?? null } : m,
+          )
           .sort((a, b) => a.name.localeCompare(b.name))
       : rawMembers;
 

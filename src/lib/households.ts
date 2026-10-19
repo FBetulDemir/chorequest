@@ -116,3 +116,10 @@ export async function getHousehold(hid: string): Promise<Household | null> {
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };
 }
+
+export async function renameHousehold(hid: string, name: string): Promise<void> {
+  await updateDoc(householdRef(hid), {
+    name: name.trim() || "Household",
+    updatedAt: Date.now(),
+  });
+}

@@ -102,26 +102,24 @@ export async function recordCompletion(params: {
   chore: ChoreTemplate;
   dayKey: string;
   status: OccurrenceStatus | undefined;
-}) {
+}): Promise<PointsLedgerEntry> {
   const { householdId, uid, chore, dayKey, status } = params;
   if (status && status.completed > 0) {
     throw new AlreadyRecordedError("This chore is already completed.");
   }
   const n = status?.completeCount ?? 0;
-  await createOnce(
-    householdId,
-    `c__${chore.id}__${dayKey}__${n}`,
-    {
-      type: "complete",
-      actorUid: uid,
-      delta: chore.points,
-      reason: `Completed: ${chore.title}`,
-      createdAt: Date.now(),
-      templateId: chore.id,
-      dayKey,
-    },
-    "Someone just completed this chore.",
-  );
+  const id = `c__${chore.id}__${dayKey}__${n}`;
+  const data: Omit<PointsLedgerEntry, "id"> = {
+    type: "complete",
+    actorUid: uid,
+    delta: chore.points,
+    reason: `Completed: ${chore.title}`,
+    createdAt: Date.now(),
+    templateId: chore.id,
+    dayKey,
+  };
+  await createOnce(householdId, id, data, "Someone just completed this chore.");
+  return { id, ...data };
 }
 
 export async function recordSkip(params: {

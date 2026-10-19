@@ -2,20 +2,31 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
+import { Flame } from "lucide-react";
+
 import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
-import { recordCompletion, recordSkip } from "@/src/lib/points";
-import { buildOccurrences, type Occurrence } from "@/src/lib/schedule";
+import { ChoreCard } from "@/src/components/ChoreCard";
+import { useChoreActions } from "@/src/components/useChoreActions";
+import { buttonClasses } from "@/src/components/ui/Button";
 import {
-  buildStatusByOccurrence,
-  entryTitle,
-  isOccurrenceOpen,
-  occurrenceKey,
-  survivingCompletions,
-} from "@/src/lib/ledgerHelpers";
-import { assigneeLabel } from "@/src/lib/assignee";
-import { friendlyError } from "@/src/lib/errors";
+  Avatar,
+  EmptyState,
+  ListSkeleton,
+  ProgressRing,
+  Segmented,
+  SectionTitle,
+} from "@/src/components/ui/Display";
+import { buildOccurrences, buildPastOccurrences, type Occurrence } from "@/src/lib/schedule";
+import { entryTitle, isOccurrenceOpen, occurrenceKey, survivingCompletions } from "@/src/lib/ledgerHelpers";
+import { assigneeUidFor } from "@/src/lib/assignee";
+import { streakFor } from "@/src/lib/scoring";
+import { friendlyDay, greeting, longDate, timeOfDay } from "@/src/lib/dates";
+import { splitChoreTitle } from "@/src/lib/choreCatalog";
 import { useTodayStartMs } from "@/src/lib/useToday";
+
+type Filter = "everyone" | "mine";
 
 export default function TodayPage() {
   return (
@@ -26,11 +37,9 @@ export default function TodayPage() {
 }
 
 function TodayInner() {
-  const { uid, householdId, members, templates, ledger, dataLoading } =
-    useReadyHousehold();
-
-  const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { uid, profile, members, templates, ledger, dataLoading } = useReadyHousehold();
+  const { statusByKey, busyKey, complete, skip } = useChoreActions();
+  const [filter, setFilter] = useState<Filter>("everyone");
 
   const todayStartMs = useTodayStartMs();
   const tomorrowStartMs = useMemo(() => {
@@ -39,7 +48,41 @@ function TodayInner() {
     return d.getTime();
   }, [todayStartMs]);
 
-  const statusByKey = useMemo(() => buildStatusByOccurrence(ledger), [ledger]);
+  // Paused chores don't show up
+  const activeTemplates = useMemo(() => templates.filter((t) => t.active), [templates]);
+
+  const upcoming = useMemo(
+    () => buildOccurrences(activeTemplates, todayStartMs, 3),
+    [activeTemplates, todayStartMs],
+  );
+
+  const openOccurrences = useMemo(
+    () => upcoming.filter((o) => isOccurrenceOpen(statusByKey.get(occurrenceKey(o.templateId, o.dayKey)))),
+    [upcoming, statusByKey],
+  );
+
+  const dueToday = useMemo(() => openOccurrences.filter((o) => o.bucket === "today"), [openOccurrences]);
+
+  // Missed weekly/monthly/seasonal chores, unless the chore is due again today
+  const overdue = useMemo(() => {
+    const dueTodayIds = new Set(upcoming.filter((o) => o.bucket === "today").map((o) => o.templateId));
+    return buildPastOccurrences(activeTemplates, todayStartMs, 14).filter(
+      (o) =>
+        !dueTodayIds.has(o.templateId) &&
+        isOccurrenceOpen(statusByKey.get(occurrenceKey(o.templateId, o.dayKey))),
+    );
+  }, [activeTemplates, upcoming, todayStartMs, statusByKey]);
+
+  const comingUp = useMemo(() => {
+    const byDay = new Map<string, Occurrence[]>();
+    for (const o of openOccurrences) {
+      if (o.bucket !== "next3") continue;
+      const list = byDay.get(o.dayKey) ?? [];
+      list.push(o);
+      byDay.set(o.dayKey, list);
+    }
+    return [...byDay.entries()];
+  }, [openOccurrences]);
 
   // Completions made today that weren't undone, newest first
   const completedToday = useMemo(
@@ -51,434 +94,208 @@ function TodayInner() {
     [ledger, todayStartMs, tomorrowStartMs],
   );
 
-  // Only count points for the current user
-  const pointsEarned = useMemo(
-    () =>
-      completedToday
-        .filter((e) => e.actorUid === uid)
-        .reduce((sum, e) => sum + Number(e.delta ?? 0), 0),
-    [completedToday, uid],
+  const myPointsToday = completedToday
+    .filter((e) => e.actorUid === uid)
+    .reduce((sum, e) => sum + Number(e.delta ?? 0), 0);
+
+  const streak = useMemo(() => streakFor(ledger, uid), [ledger, uid]);
+
+  // Progress: chores due today that are done, out of all chores due today
+  const todayKeys = useMemo(
+    () => new Set(upcoming.filter((o) => o.bucket === "today").map((o) => occurrenceKey(o.templateId, o.dayKey))),
+    [upcoming],
   );
+  const doneForToday = [...todayKeys].filter((k) => (statusByKey.get(k)?.completed ?? 0) > 0).length;
+  const totalToday = doneForToday + dueToday.length;
+  const progress = totalToday ? doneForToday / totalToday : 0;
 
-  // Paused chores don't show up
-  const activeTemplates = useMemo(
-    () => templates.filter((t) => t.active),
-    [templates],
-  );
+  const memberOf = (u: string | null) => (u ? (members.find((m) => m.uid === u) ?? null) : null);
+  const firstName = (profile?.name ?? "").split(" ")[0];
 
-  const occurrences = useMemo(
-    () => buildOccurrences(activeTemplates, todayStartMs, 10),
-    [activeTemplates, todayStartMs],
-  );
+  // "Just me" = assigned to me, or anyone can do it
+  const visible = (o: Occurrence) => {
+    if (filter === "everyone") return true;
+    const id = assigneeUidFor(o.chore, o.dayKey, members);
+    return id === null || id === uid;
+  };
 
-  // Hide chores that are completed/skipped FOR THEIR dayKey
-  const openOccurrences = useMemo(
-    () =>
-      occurrences.filter((o) =>
-        isOccurrenceOpen(statusByKey.get(occurrenceKey(o.templateId, o.dayKey))),
-      ),
-    [occurrences, statusByKey],
-  );
+  const shownOverdue = overdue.filter(visible);
+  const shownToday = dueToday.filter(visible);
 
-  const dueToday = useMemo(
-    () => openOccurrences.filter((o) => o.bucket === "today"),
-    [openOccurrences],
-  );
-
-  const next3 = useMemo(
-    () => openOccurrences.filter((o) => o.bucket === "next3"),
-    [openOccurrences],
-  );
-
-  // Show all non-daily chores with their next occurrence
-  const recurringChores = useMemo(() => {
-    const nonDaily = activeTemplates.filter((t) => t.frequency !== "daily");
-
-    return nonDaily.map((chore) => {
-      const nextOcc = occurrences.find(
-        (o) => o.templateId === chore.id && o.bucket !== "today",
-      );
-
-      // If there's an open occurrence today, show that instead
-      const todayOpen = openOccurrences.find(
-        (o) => o.templateId === chore.id && o.bucket === "today",
-      );
-      if (todayOpen) {
-        return {
-          chore,
-          nextDue: todayOpen.dayKey,
-          dueStatus: "due-today",
-          occurrence: todayOpen,
-        };
-      }
-
-      return {
-        chore,
-        nextDue: nextOcc?.dayKey ?? "Not scheduled",
-        dueStatus: nextOcc?.bucket === "next3" ? "coming-soon" : "upcoming",
-        occurrence: nextOcc,
-      };
-    });
-  }, [activeTemplates, occurrences, openOccurrences]);
-
-  async function run(key: string, action: () => Promise<void>) {
-    setError(null);
-    setBusyKey(key);
-    try {
-      await action();
-    } catch (e) {
-      setError(friendlyError(e));
-    } finally {
-      setBusyKey(null);
-    }
-  }
-
-  function complete(o: Occurrence) {
+  function renderCard(o: Occurrence, meta?: string, isOverdue = false) {
     const key = occurrenceKey(o.templateId, o.dayKey);
-    return run(key, () =>
-      recordCompletion({
-        householdId,
-        uid,
-        chore: o.chore,
-        dayKey: o.dayKey,
-        status: statusByKey.get(key),
-      }),
-    );
-  }
-
-  function skip(o: Occurrence) {
-    const key = occurrenceKey(o.templateId, o.dayKey);
-    return run(key, () =>
-      recordSkip({
-        householdId,
-        uid,
-        chore: o.chore,
-        dayKey: o.dayKey,
-        status: statusByKey.get(key),
-      }),
+    return (
+      <ChoreCard
+        key={key}
+        chore={o.chore}
+        meta={meta}
+        assignee={memberOf(assigneeUidFor(o.chore, o.dayKey, members))}
+        currentUid={uid}
+        overdue={isOverdue}
+        busy={busyKey === key}
+        onComplete={(origin) => complete({ chore: o.chore, dayKey: o.dayKey }, origin)}
+        onSkip={() => skip({ chore: o.chore, dayKey: o.dayKey })}
+      />
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="cq-card p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="cq-title">Today’s Quest</div>
-            <div className="cq-subtitle">{new Date().toLocaleDateString()}</div>
-          </div>
-
-          <div className="text-right">
-            <div className="text-2xl font-semibold text-purple-600">
-              {pointsEarned}
+    <div className="space-y-7">
+      {/* Hero */}
+      <section className="cq-card relative overflow-hidden p-5">
+        <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-(image:--cq-gradient) opacity-15 blur-2xl" />
+        <div className="relative flex items-center gap-4">
+          <ProgressRing value={progress} size={84} stroke={9}>
+            <div className="text-center leading-none">
+              <div className="text-xl font-extrabold text-ink">
+                {doneForToday}
+                <span className="text-sm text-muted">/{totalToday}</span>
+              </div>
+              <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-muted">done</div>
             </div>
-            <div className="text-xs text-gray-500">points earned</div>
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-3 gap-3">
-          <Stat
-            title="Open"
-            value={dueToday.length}
-            icon="⏳"
-            tone="bg-blue-50 text-blue-700 border-blue-100"
-          />
-          <Stat
-            title="Done"
-            value={completedToday.length}
-            icon="✓"
-            tone="bg-emerald-50 text-emerald-700 border-emerald-100"
-          />
-          <Stat
-            title="Upcoming"
-            value={next3.length}
-            icon="📅"
-            tone="bg-purple-50 text-purple-700 border-purple-100"
-          />
-        </div>
-
-        {error ? (
-          <div className="mt-3 text-sm text-red-600">{error}</div>
-        ) : null}
-      </div>
-
-      <Section title="✨ Due Today">
-        {dataLoading ? (
-          <div className="text-sm text-gray-500">Loading...</div>
-        ) : null}
-
-        {!dataLoading && dueToday.length === 0 ? (
-          <div className="cq-card p-8 text-center">
-            <div className="text-6xl mb-4">🎉✨</div>
-            <div className="text-xl font-bold text-gray-900">All caught up!</div>
-            <div className="text-sm text-gray-500 mt-2">
-              No chores due today. Enjoy your free time!
+          </ProgressRing>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-muted">{longDate(todayStartMs)}</div>
+            <h1 className="mt-0.5 text-2xl font-extrabold leading-tight tracking-tight text-ink">
+              {greeting()}
+              {firstName ? `, ${firstName}` : ""} 👋
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-extrabold text-amber-700">
+                🪙 {myPointsToday} pts today
+              </span>
+              {streak > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs font-extrabold text-orange-700">
+                  <Flame size={13} aria-hidden="true" /> {streak}-day streak
+                </span>
+              ) : null}
             </div>
           </div>
-        ) : null}
+        </div>
+      </section>
 
-        <div className="space-y-3">
-          {dueToday.map((o) => {
-            const key = `${o.templateId}__${o.dayKey}`;
+      {members.length > 1 ? (
+        <Segmented<Filter>
+          label="Show chores for"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: "everyone", label: "Everyone" },
+            { value: "mine", label: "Just me" },
+          ]}
+        />
+      ) : null}
+
+      {dataLoading ? <ListSkeleton rows={4} /> : null}
+
+      {/* Overdue */}
+      {!dataLoading && shownOverdue.length > 0 ? (
+        <section className="space-y-3" aria-labelledby="overdue-heading">
+          <SectionTitle>
+            <span id="overdue-heading">⏰ Catch up</span>
+          </SectionTitle>
+          <div className="space-y-2.5">
+            {shownOverdue.map((o) => renderCard(o, `Was due ${friendlyDay(o.dayKey, todayStartMs)}`, true))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Today */}
+      {!dataLoading ? (
+        <section className="space-y-3" aria-labelledby="today-heading">
+          <SectionTitle>
+            <span id="today-heading">✨ Today</span>
+          </SectionTitle>
+          {shownToday.length > 0 ? (
+            <>
+              <div className="space-y-2.5">{shownToday.map((o) => renderCard(o))}</div>
+              <p className="text-center text-xs text-faint sm:hidden">Tip: swipe a chore to the right to complete it</p>
+            </>
+          ) : templates.length === 0 ? (
+            <EmptyState
+              mood="thinking"
+              title="Let’s add some chores"
+              description="Pick from the starter pack or create your own on the Household tab."
+              action={
+                <Link href="/household#chores" className={buttonClasses({ variant: "primary" })}>
+                  Add chores
+                </Link>
+              }
+            />
+          ) : (
+            <EmptyState
+              mood={completedToday.length ? "celebrate" : "sleepy"}
+              title={completedToday.length ? "All done for today!" : "Nothing due today"}
+              description={
+                completedToday.length
+                  ? "Amazing teamwork. Enjoy your free time 🎉"
+                  : filter === "mine"
+                    ? "Nothing for you today. Switch to “Everyone” to help out."
+                    : "Put your feet up, or get ahead on what’s coming up below."
+              }
+              compact
+            />
+          )}
+        </section>
+      ) : null}
+
+      {/* Coming up */}
+      {!dataLoading && comingUp.length > 0 ? (
+        <section className="space-y-3" aria-labelledby="upcoming-heading">
+          <SectionTitle
+            right={
+              <Link href="/plan" className="text-xs font-bold text-brand-strong hover:underline">
+                See plan →
+              </Link>
+            }>
+            <span id="upcoming-heading">📅 Coming up</span>
+          </SectionTitle>
+          {comingUp.map(([dayKey, list]) => {
+            const shown = list.filter(visible);
+            if (!shown.length) return null;
             return (
-              <OccurrenceCard
-                key={key}
-                title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${assigneeLabel(o.chore, o.dayKey, members)}`}
-                points={o.chore.points}
-                busy={busyKey === key}
-                onComplete={() => complete(o)}
-                onSkip={() => skip(o)}
-              />
+              <div key={dayKey} className="space-y-2.5">
+                <div className="px-1 text-xs font-extrabold uppercase tracking-wide text-muted">
+                  {friendlyDay(dayKey, todayStartMs)}
+                </div>
+                {shown.map((o) => renderCard(o))}
+              </div>
             );
           })}
-        </div>
-      </Section>
+        </section>
+      ) : null}
 
-      <Section title="📅 Next 3 Days">
-        <div className="space-y-3">
-          {next3.length === 0 ? (
-            <div className="text-sm text-gray-500">Nothing upcoming.</div>
-          ) : null}
-
-          {next3.map((o) => {
-            const key = `${o.templateId}__${o.dayKey}`;
-            return (
-              <OccurrenceCard
-                key={key}
-                title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${assigneeLabel(o.chore, o.dayKey, members)}`}
-                points={o.chore.points}
-                busy={busyKey === key}
-                onComplete={() => complete(o)}
-                onSkip={() => skip(o)}
-              />
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section title="🔁 Recurring Chores">
-        <div className="space-y-3">
-          {recurringChores.length === 0 ? (
-            <div className="text-sm text-gray-500">
-              No weekly, monthly, or seasonal chores.
-            </div>
-          ) : null}
-
-          {recurringChores.map((item) => {
-            const dueStatusEmoji =
-              item.dueStatus === "due-today"
-                ? "🔥"
-                : item.dueStatus === "coming-soon"
-                  ? "📅"
-                  : "🗓️";
-
-            const dueStatusText =
-              item.dueStatus === "due-today"
-                ? "Due today!"
-                : item.dueStatus === "coming-soon"
-                  ? "Coming soon"
-                  : "Scheduled";
-
-            // If due today, allow marking complete
-            if (item.occurrence && item.dueStatus === "due-today") {
-              const occ = item.occurrence;
-              const key = occurrenceKey(occ.templateId, occ.dayKey);
+      {/* Done today */}
+      {completedToday.length > 0 ? (
+        <section className="space-y-3" aria-labelledby="done-heading">
+          <SectionTitle>
+            <span id="done-heading">✅ Done today</span>
+          </SectionTitle>
+          <div className="cq-card divide-y divide-line overflow-hidden">
+            {completedToday.slice(0, 20).map((e) => {
+              const who = memberOf(e.actorUid);
+              const { icon, name } = splitChoreTitle(entryTitle(e));
               return (
-                <OccurrenceCard
-                  key={key}
-                  title={item.chore.title}
-                  subtitle={`${item.nextDue} • ${item.chore.frequency} • ${assigneeLabel(occ.chore, occ.dayKey, members)}`}
-                  points={item.chore.points}
-                  busy={busyKey === key}
-                  onComplete={() => complete(occ)}
-                  onSkip={() => skip(occ)}
-                />
+                <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="text-xl" aria-hidden="true">
+                    {icon}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-bold text-ink">{name}</div>
+                    <div className="text-xs text-muted">
+                      {e.actorUid === uid ? "You" : (who?.name ?? "Someone")} · {timeOfDay(Number(e.createdAt))}
+                    </div>
+                  </div>
+                  {who ? <Avatar uid={who.uid} name={who.name} emoji={who.avatar} size={28} /> : null}
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-700">
+                    +{e.delta}
+                  </span>
+                </div>
               );
-            }
-
-            // Otherwise just show info
-            return (
-              <div
-                key={item.chore.id}
-                className="cq-card-soft p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="text-2xl">{dueStatusEmoji}</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-sm truncate">
-                      {item.chore.title}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {dueStatusText} • Next: {item.nextDue} •{" "}
-                      {item.chore.frequency} •{" "}
-                      {item.occurrence
-                        ? assigneeLabel(
-                            item.occurrence.chore,
-                            item.occurrence.dayKey,
-                            members,
-                          )
-                        : "Not scheduled"}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold shrink-0">
-                  <span>🪙</span>
-                  <span>{item.chore.points}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section title="✅ Completed Today">
-        <div className="space-y-2">
-          {completedToday.length === 0 ? (
-            <div className="text-sm text-gray-500">No activity yet.</div>
-          ) : null}
-
-          {completedToday.slice(0, 20).map((e) => {
-            const actorName =
-              members.find((m) => m.uid === e.actorUid)?.name ?? "Someone";
-            const time = new Date(Number(e.createdAt ?? 0)).toLocaleTimeString(
-              [],
-              { hour: "2-digit", minute: "2-digit" },
-            );
-
-            return (
-              <div
-                key={e.id}
-                className="cq-card-soft p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="text-2xl">✓</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium text-sm truncate">
-                      {entryTitle(e)}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Completed by {actorName} • {time}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0">
-                  <span>+{e.delta}</span>
-                  <span>pts</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Section>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  right,
-  children,
-}: {
-  title: string;
-  right?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-lg font-semibold text-gray-900">{title}</div>
-        {right ?? null}
-      </div>
-      <div>{children}</div>
-    </div>
-  );
-}
-
-function Stat({
-  title,
-  value,
-  icon,
-  tone,
-}: {
-  title: string;
-  value: number;
-  icon?: string;
-  tone: string;
-}) {
-  return (
-    <div className={"rounded-xl border p-3 text-center " + tone}>
-      {icon ? <div className="text-lg mb-1">{icon}</div> : null}
-      <div className="text-2xl font-bold">{value}</div>
-      <div className="text-xs opacity-80 font-medium mt-1">{title}</div>
-    </div>
-  );
-}
-
-function OccurrenceCard({
-  title,
-  subtitle,
-  points,
-  busy,
-  onComplete,
-  onSkip,
-}: {
-  title: string;
-  subtitle: string;
-  points: number;
-  busy: boolean;
-  onComplete: () => void;
-  onSkip: () => void;
-}) {
-  return (
-    <div className="cq-card p-4 hover:shadow-lg transition-shadow">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold text-base truncate">{title}</div>
-          <div className="mt-1 text-xs text-gray-500">{subtitle}</div>
-        </div>
-        <div className="flex items-center gap-1 bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-semibold shrink-0">
-          <span>🪙</span>
-          <span>{points}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center gap-2">
-        <button
-          className="
-  w-full inline-flex items-center justify-center gap-2
-  rounded-xl px-4 py-3 text-sm font-semibold text-white
-  bg-gradient-to-r from-emerald-500 to-green-500
-  shadow-sm shadow-emerald-200/50
-  hover:from-emerald-600 hover:to-green-600
-  hover:shadow-md hover:shadow-emerald-200/60
-  active:scale-[0.98]
-  transition-all duration-150
-  disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:shadow-sm
-"
-          onClick={onComplete}
-          disabled={busy}
-          type="button">
-          {busy ? "..." : `✓ Complete (+${points} pts)`}
-        </button>
-
-        <button
-          className="
-  inline-flex items-center justify-center gap-2
-  rounded-xl px-4 py-3 text-sm font-medium
-  bg-white text-gray-700
-  border border-gray-200
-  shadow-sm
-  hover:bg-gray-50 hover:text-gray-900
-  active:scale-[0.98]
-  transition-all duration-150
-  disabled:opacity-60 disabled:cursor-not-allowed
-"
-          onClick={onSkip}
-          disabled={busy}
-          type="button">
-          Skip
-        </button>
-      </div>
+            })}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
