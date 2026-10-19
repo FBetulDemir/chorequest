@@ -13,6 +13,10 @@ const config: CapacitorConfig = {
     contentInset: "never",
   },
   plugins: {
+    PushNotifications: {
+      // Show pushes as banners even while the app is open (iOS)
+      presentationOptions: ["badge", "sound", "alert"],
+    },
     SplashScreen: {
       launchShowDuration: 700,
       launchAutoHide: true,

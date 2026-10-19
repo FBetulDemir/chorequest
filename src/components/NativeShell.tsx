@@ -6,6 +6,9 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { useHousehold } from "@/src/components/HouseholdProvider";
+import { enablePush, pushSupported, savedPushToken } from "@/src/lib/push";
 import { pathFromAppLink } from "@/src/lib/invite";
 
 // Screens where Android's back button should leave the app instead of going back
@@ -15,6 +18,7 @@ const ROOT_SCREENS = ["/", "/today", "/welcome"];
 export function NativeShell() {
   const router = useRouter();
   const pathname = usePathname();
+  const { uid } = useHousehold();
 
   // Status bar text follows the app theme
   useEffect(() => {
@@ -68,6 +72,19 @@ export function NativeShell() {
       handle.then((h) => h.remove()).catch(() => {});
     };
   }, [router]);
+
+  // Push: refresh this device's token on start, and handle taps on notifications
+  useEffect(() => {
+    if (!pushSupported() || !uid) return;
+    if (savedPushToken()) enablePush(uid, { prompt: false }).catch(() => {});
+    const handle = PushNotifications.addListener("pushNotificationActionPerformed", ({ notification }) => {
+      const path = typeof notification.data?.path === "string" ? notification.data.path : "/today";
+      router.push(path);
+    });
+    return () => {
+      handle.then((h) => h.remove()).catch(() => {});
+    };
+  }, [uid, router]);
 
   // Mark the document so CSS can tell it's running inside the app
   useEffect(() => {
