@@ -82,7 +82,7 @@ export function Avatar({
       aria-label={name}
       role="img"
       className={clsx(
-        "inline-grid shrink-0 select-none place-items-center rounded-full bg-gradient-to-br font-extrabold text-white",
+        "inline-grid shrink-0 select-none place-items-center rounded-full bg-linear-to-br font-extrabold text-white",
         AVATAR_COLORS[hash(uid) % AVATAR_COLORS.length],
         ring && "ring-2 ring-surface",
         className,

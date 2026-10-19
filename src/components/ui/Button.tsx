@@ -13,7 +13,7 @@ const VARIANTS: Record<Variant, string> = {
   ghost: "text-muted hover:bg-surface-2 hover:text-ink",
   danger: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100",
   success:
-    "text-white bg-gradient-to-r from-emerald-500 to-green-500 shadow-[0_8px_20px_rgba(16,185,129,0.25)] hover:from-emerald-600 hover:to-green-600",
+    "text-white bg-linear-to-r from-emerald-500 to-green-500 shadow-[0_8px_20px_rgba(16,185,129,0.25)] hover:from-emerald-600 hover:to-green-600",
 };
 
 const SIZES: Record<Size, string> = {

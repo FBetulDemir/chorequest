@@ -3,18 +3,32 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import clsx from "clsx";
+import { CalendarRange, Flame, Share2 } from "lucide-react";
+
 import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { Button } from "@/src/components/ui/Button";
+import { Avatar, Card, EmptyState, ListRow, ListSkeleton, Segmented, SectionTitle } from "@/src/components/ui/Display";
 import { getRangeMs, type RangeKey } from "@/src/lib/ledgerHelpers";
 import { scoresInRange, streakFor } from "@/src/lib/scoring";
+import { splitChoreTitle } from "@/src/lib/choreCatalog";
+import type { HouseholdMember } from "@/src/lib/members";
 
 type Row = {
   uid: string;
   name: string;
+  avatar?: string | null;
   points: number;
   chores: number;
   streak: number;
-  topChore: string;
+  topChore: string | null;
+};
+
+const RANGE_LABEL: Record<RangeKey, string> = {
+  week: "this week",
+  month: "this month",
+  all: "of all time",
 };
 
 export default function ScorePage() {
@@ -26,376 +40,241 @@ export default function ScorePage() {
 }
 
 function ScoreInner() {
-  const { uid, members, ledger, dataLoading, error } = useReadyHousehold();
-  const loading = dataLoading;
-  const [range, setRange] = useState<RangeKey>("month");
+  const { uid, members, ledger, dataLoading } = useReadyHousehold();
+  const [range, setRange] = useState<RangeKey>("week");
 
-  const rows = useMemo(() => {
+  const rows = useMemo<Row[]>(() => {
     const { startMs, endMs } = getRangeMs(range);
     const scores = scoresInRange(ledger, startMs, endMs);
-
-    const nameOf = (u: string) =>
-      members.find((m) => m.uid === u)?.name ?? "Member";
+    const byUid = new Map<string, HouseholdMember>(members.map((m) => [m.uid, m]));
 
     // include all members (even 0), plus anyone who scored but has since left
     const uids = new Set([...members.map((m) => m.uid), ...scores.keys()]);
-
-    const computed: Row[] = [...uids].map((u) => {
-      const v = scores.get(u);
-      return {
-        uid: u,
-        name: nameOf(u),
-        points: v?.points ?? 0,
-        chores: v?.chores ?? 0,
-        streak: streakFor(ledger, u),
-        topChore: v?.topChore ?? "—",
-      };
-    });
-
-    computed.sort((a, b) => b.points - a.points);
-    return computed;
+    return [...uids]
+      .map((u) => {
+        const s = scores.get(u);
+        return {
+          uid: u,
+          name: byUid.get(u)?.name ?? "Former member",
+          avatar: byUid.get(u)?.avatar,
+          points: s?.points ?? 0,
+          chores: s?.chores ?? 0,
+          streak: streakFor(ledger, u),
+          topChore: s?.topChore ?? null,
+        };
+      })
+      .sort((a, b) => b.points - a.points || b.chores - a.chores);
   }, [ledger, members, range]);
 
-  const champion = rows[0];
+  const anyPoints = rows.some((r) => r.points > 0);
+  const totalPoints = rows.reduce((s, r) => s + r.points, 0);
+  const totalChores = rows.reduce((s, r) => s + r.chores, 0);
 
   return (
     <div className="space-y-6">
-      {/* header gradient card */}
-      <div
-        className="cq-card overflow-hidden relative"
-        style={{
-          background:
-            "linear-gradient(90deg, #f59e0b 0%, #fb7185 45%, #a855f7 100%)",
-        }}>
-        <div className="p-6 text-white flex items-start justify-between">
-          <div className="flex-1">
-            <div className="text-2xl font-semibold">Leaderboard</div>
-            <div className="opacity-90 text-sm">
-              Who’s crushing it this period?
-            </div>
-
-            {champion ? (
-              <div className="mt-5 rounded-2xl bg-white/20 backdrop-blur-sm p-5 w-full max-w-[320px] border border-white/30">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm opacity-90">Current Champion</div>
-                  <div className="flex items-center justify-center w-6 h-6 rounded-full bg-white/30 text-lg">
-                    👑
-                  </div>
-                </div>
-                <div className="text-4xl font-bold mt-2 flex items-center gap-2">
-                  {champion.name}
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white text-xl font-bold shadow-lg">
-                    #1
-                  </div>
-                </div>
-                <div className="mt-3 flex items-center gap-3 text-sm">
-                  <div className="flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full">
-                    <span className="font-semibold">{champion.points}</span>
-                    <span className="opacity-90">points</span>
-                  </div>
-                  <div className="flex items-center gap-1 bg-white/20 px-3 py-1 rounded-full">
-                    <span className="font-semibold">{champion.chores}</span>
-                    <span className="opacity-90">chores</span>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-5 rounded-2xl bg-white/20 p-5 w-65">
-                <div className="text-sm opacity-90">Current Champion</div>
-                <div className="text-3xl font-bold mt-1">—</div>
-                <div className="mt-2 text-sm opacity-90">
-                  0 points • 0 chores
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="text-5xl shrink-0">🏆</div>
-        </div>
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight text-ink">Leaderboard</h1>
+        <p className="text-sm text-muted">Who&apos;s carrying the household {RANGE_LABEL[range]}?</p>
       </div>
 
-      {/* tabs */}
-      <div className="grid grid-cols-3 gap-3">
-        <TabButton active={range === "week"} onClick={() => setRange("week")}>
-          This Week
-        </TabButton>
-        <TabButton active={range === "month"} onClick={() => setRange("month")}>
-          This Month
-        </TabButton>
-        <TabButton active={range === "all"} onClick={() => setRange("all")}>
-          All Time
-        </TabButton>
-      </div>
+      <Segmented<RangeKey>
+        label="Time range"
+        value={range}
+        onChange={setRange}
+        options={[
+          { value: "week", label: "Week" },
+          { value: "month", label: "Month" },
+          { value: "all", label: "All time" },
+        ]}
+      />
 
-      <Link
-        href="/score/history"
-        className="cq-card-soft p-4 flex items-center justify-between hover:shadow-md transition">
-        <div className="flex items-center gap-2">
-          <span className="text-xl">📆</span>
-          <span className="font-medium text-sm">View scores by month</span>
+      {dataLoading ? <ListSkeleton rows={3} /> : null}
+
+      {!dataLoading && members.length < 2 ? (
+        <EmptyState
+          mood="thinking"
+          title="It's more fun together"
+          description="Invite your partner or roommates to start a friendly competition."
+          action={
+            <Link href="/household">
+              <Button variant="primary">
+                <Share2 size={16} aria-hidden="true" /> Invite someone
+              </Button>
+            </Link>
+          }
+          compact
+        />
+      ) : null}
+
+      {!dataLoading && anyPoints ? <Podium rows={rows.slice(0, 3)} currentUid={uid} /> : null}
+
+      {!dataLoading && !anyPoints && members.length >= 2 ? (
+        <EmptyState
+          mood="sleepy"
+          title="No points yet"
+          description={`Nobody has completed a chore ${RANGE_LABEL[range]}. First one takes the lead!`}
+          compact
+        />
+      ) : null}
+
+      {/* Ranking */}
+      {!dataLoading && rows.length > 0 ? (
+        <section className="space-y-3" aria-labelledby="ranking-heading">
+          <SectionTitle>
+            <span id="ranking-heading">Ranking</span>
+          </SectionTitle>
+          <Card className="divide-y divide-line overflow-hidden">
+            {rows.map((r, idx) => (
+              <div key={r.uid} className={clsx("flex items-center gap-3 px-4 py-3", r.uid === uid && "bg-brand-soft")}>
+                <div className="w-6 text-center text-sm font-extrabold text-muted">
+                  {anyPoints && idx < 3 ? ["🥇", "🥈", "🥉"][idx] : idx + 1}
+                </div>
+                <Avatar uid={r.uid} name={r.name} emoji={r.avatar} size={40} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold text-ink">
+                    {r.name}
+                    {r.uid === uid ? <span className="cq-pill ml-2 px-2 py-0.5">You</span> : null}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
+                    <span>{r.chores} chores</span>
+                    {r.streak > 0 ? (
+                      <span className="inline-flex items-center gap-0.5 font-bold text-orange-700">
+                        <Flame size={12} aria-hidden="true" /> {r.streak}
+                      </span>
+                    ) : null}
+                    {r.topChore ? <span className="truncate">Loves {splitChoreTitle(r.topChore).name}</span> : null}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-extrabold text-brand-strong">{r.points}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-muted">pts</div>
+                </div>
+              </div>
+            ))}
+          </Card>
+        </section>
+      ) : null}
+
+      {/* Household totals */}
+      {!dataLoading && anyPoints ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Card className="p-4">
+            <div className="text-xs font-bold text-muted">Chores done</div>
+            <div className="mt-1 text-3xl font-extrabold text-emerald-600">{totalChores}</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs font-bold text-muted">Points earned</div>
+            <div className="mt-1 text-3xl font-extrabold text-brand-strong">{totalPoints}</div>
+          </Card>
         </div>
-        <span className="text-gray-400">→</span>
-      </Link>
+      ) : null}
 
-      {error ? <div className="text-sm text-red-600">{error}</div> : null}
-      {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
+      {!dataLoading ? <Achievements rows={rows} /> : null}
 
-      {/* ranking */}
-      <div className="cq-card p-5">
-        <div className="flex items-end justify-between">
-          <div className="text-lg font-semibold">Ranking</div>
-          <div className="text-sm text-gray-500">{members.length} members</div>
-        </div>
+      <Card className="overflow-hidden">
+        <ListRow
+          href="/score/history"
+          icon={<CalendarRange size={18} />}
+          title="Monthly scores"
+          description="See who won each month"
+        />
+      </Card>
+    </div>
+  );
+}
 
-        <div className="mt-4 space-y-3">
-          {rows.map((r, idx) => {
-            const rankBadge =
-              idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : null;
-            const isCurrentUser = r.uid === uid;
+function Podium({ rows, currentUid }: { rows: Row[]; currentUid: string }) {
+  // Display order: 2nd, 1st, 3rd
+  const order = [rows[1], rows[0], rows[2]];
+  const style = [
+    { height: "h-20", avatar: 56, medal: "🥈", tone: "from-gray-200 to-gray-100" },
+    { height: "h-28", avatar: 72, medal: "🥇", tone: "from-amber-300 to-amber-100" },
+    { height: "h-14", avatar: 48, medal: "🥉", tone: "from-orange-300 to-orange-100" },
+  ];
 
-            return (
+  return (
+    <Card className="relative overflow-hidden px-4 pb-0 pt-6">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-(image:--cq-gradient) opacity-10" />
+      <div className="relative grid grid-cols-3 items-end gap-3">
+        {order.map((r, i) =>
+          r ? (
+            <div key={r.uid} className="flex flex-col items-center">
+              {i === 1 ? <div className="animate-bob text-2xl" aria-hidden="true">👑</div> : null}
+              <Avatar uid={r.uid} name={r.name} emoji={r.avatar} size={style[i].avatar} ring className="shadow-lifted" />
+              <div className="mt-2 max-w-full truncate text-sm font-extrabold text-ink">
+                {r.uid === currentUid ? "You" : r.name}
+              </div>
+              <div className="text-xs font-bold text-muted">{r.points} pts</div>
               <div
-                key={r.uid}
-                className={
-                  "cq-card-soft p-4 transition " +
-                  (idx === 0
-                    ? "border-2 border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50"
-                    : isCurrentUser
-                      ? "border-2 border-purple-200 bg-purple-50/30"
-                      : "")
-                }>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-4 min-w-0 flex-1">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-surface border-2 border-gray-100 font-bold text-gray-600 shrink-0">
-                      {rankBadge ?? `#${idx + 1}`}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-semibold text-base">
-                          {r.name}
-                        </div>
-                        {isCurrentUser ? (
-                          <span className="cq-pill text-xs">You</span>
-                        ) : null}
-                        {idx === 0 ? (
-                          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-100 text-amber-700">
-                            👑 Champion
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-2 text-sm text-gray-500">
-                        {r.chores} chores completed
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {r.streak > 0 ? (
-                          <div className="flex items-center gap-1 text-xs bg-orange-50 text-orange-700 px-2 py-1 rounded-lg border border-orange-100">
-                            <span>🔥</span>
-                            <span className="font-semibold">{r.streak}</span>
-                            <span>Streak</span>
-                          </div>
-                        ) : null}
-
-                        {r.chores > 0 && r.topChore !== "—" ? (
-                          <div className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-lg border border-blue-100">
-                            <span>✓</span>
-                            <span className="font-medium truncate max-w-[120px]">
-                              Top: {r.topChore.split(" ").slice(0, 3).join(" ")}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right shrink-0">
-                    <div className="text-3xl font-bold text-purple-600">
-                      {r.points}
-                    </div>
-                    <div className="text-xs text-gray-500">points</div>
-                  </div>
-                </div>
+                className={clsx(
+                  "mt-2 grid w-full place-items-center rounded-t-2xl bg-linear-to-b text-2xl dark:opacity-80",
+                  style[i].height,
+                  style[i].tone,
+                )}
+                aria-hidden="true">
+                {style[i].medal}
               </div>
-            );
-          })}
-        </div>
+            </div>
+          ) : (
+            <div key={i} />
+          ),
+        )}
       </div>
-
-      {/* household stats */}
-      <HouseholdStats rows={rows} />
-
-      {/* achievements */}
-      <Achievements rows={rows} />
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        "rounded-2xl border px-5 py-4 text-center text-sm transition " +
-        (active ? "text-white" : "bg-surface")
-      }
-      style={
-        active
-          ? {
-              background:
-                "linear-gradient(90deg, var(--cq-purple), var(--cq-pink))",
-              borderColor: "transparent",
-            }
-          : { borderColor: "var(--cq-border)" }
-      }>
-      {children}
-    </button>
-  );
-}
-
-function HouseholdStats({
-  rows,
-}: {
-  rows: { points: number; chores: number }[];
-}) {
-  const totalPoints = useMemo(
-    () => rows.reduce((s, r) => s + r.points, 0),
-    [rows],
-  );
-  const totalChores = useMemo(
-    () => rows.reduce((s, r) => s + r.chores, 0),
-    [rows],
-  );
-
-  return (
-    <div className="cq-card p-5">
-      <div className="flex items-center gap-2 text-lg font-semibold">
-        <span>📊</span>
-        <span>Household Stats</span>
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-          <div className="text-sm text-gray-600">Total Chores Done</div>
-          <div className="text-3xl font-bold mt-1 text-emerald-700">
-            {totalChores}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-pink-200 bg-pink-50 p-5">
-          <div className="text-sm text-gray-600">Total Points</div>
-          <div className="text-3xl font-bold mt-1 text-pink-700">
-            {totalPoints}
-          </div>
-        </div>
-      </div>
-    </div>
+    </Card>
   );
 }
 
 function Achievements({ rows }: { rows: Row[] }) {
-  const achievements = useMemo(() => {
-    if (rows.length === 0) return [];
+  const badges = useMemo(() => {
+    if (!rows.length) return [];
+    const out: { uid: string; name: string; emoji: string; title: string }[] = [];
 
-    const result: {
-      member: string;
-      badge: string;
-      title: string;
-      emoji: string;
-    }[] = [];
-
-    // Find member with longest streak
-    const maxStreakMember = rows.reduce((max, r) =>
-      r.streak > max.streak ? r : max,
-    );
-    if (maxStreakMember && maxStreakMember.streak > 0) {
-      result.push({
-        member: maxStreakMember.name,
-        badge: "🔥",
-        title:
-          maxStreakMember.streak >= 7
-            ? "Consistency King"
-            : maxStreakMember.streak >= 3
-              ? "On Fire"
-              : "Getting Started",
+    const streaker = rows.reduce((a, b) => (b.streak > a.streak ? b : a));
+    if (streaker.streak >= 2) {
+      out.push({
+        uid: streaker.uid,
+        name: streaker.name,
         emoji: "🔥",
+        title: streaker.streak >= 7 ? "Consistency king" : streaker.streak >= 3 ? "On fire" : "Getting started",
       });
     }
 
-    // Find member with most chores
-    const maxChoresMember = rows.reduce((max, r) =>
-      r.chores > max.chores ? r : max,
-    );
-    if (maxChoresMember && maxChoresMember.chores > 0) {
-      result.push({
-        member: maxChoresMember.name,
-        badge: "💪",
-        title:
-          maxChoresMember.chores >= 20
-            ? "Chore Champion"
-            : maxChoresMember.chores >= 10
-              ? "Hard Worker"
-              : "Go-Getter",
+    const worker = rows.reduce((a, b) => (b.chores > a.chores ? b : a));
+    if (worker.chores > 0) {
+      out.push({
+        uid: worker.uid,
+        name: worker.name,
         emoji: "💪",
+        title: worker.chores >= 20 ? "Chore champion" : worker.chores >= 10 ? "Hard worker" : "Go-getter",
       });
     }
 
-    // Find top performer (most points)
-    const topPerformer = rows[0];
-    if (topPerformer && topPerformer.points > 0) {
-      result.push({
-        member: topPerformer.name,
-        badge: "🏆",
-        title: "Top Performer",
-        emoji: "🏆",
-      });
+    if (rows[0]?.points > 0) {
+      out.push({ uid: rows[0].uid, name: rows[0].name, emoji: "🏆", title: "Top performer" });
     }
-
-    // Deduplicate achievements for the same member
-    const uniqueAchievements = result.filter(
-      (item, index, self) =>
-        index === self.findIndex((t) => t.member === item.member),
-    );
-
-    return uniqueAchievements.slice(0, 4);
+    return out;
   }, [rows]);
 
-  if (achievements.length === 0) return null;
+  if (!badges.length) return null;
 
   return (
-    <div className="cq-card p-5">
-      <div className="flex items-center gap-2 text-lg font-semibold">
-        <span>🎯</span>
-        <span>Achievements</span>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {achievements.map((achievement, idx) => (
-          <div
-            key={idx}
-            className="rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50 to-pink-50 p-4">
-            <div className="flex items-center gap-3">
-              <div className="text-3xl">{achievement.emoji}</div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm text-purple-900 truncate">
-                  {achievement.member}
-                </div>
-                <div className="text-xs text-purple-700 font-medium mt-0.5">
-                  {achievement.title}
-                </div>
-              </div>
+    <section className="space-y-3" aria-labelledby="badges-heading">
+      <SectionTitle>
+        <span id="badges-heading">Badges</span>
+      </SectionTitle>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {badges.map((b) => (
+          <Card key={`${b.emoji}-${b.uid}`} className="flex items-center gap-3 p-4">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-soft text-2xl" aria-hidden="true">
+              {b.emoji}
+            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-extrabold text-ink">{b.title}</div>
+              <div className="truncate text-xs text-muted">{b.name}</div>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

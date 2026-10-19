@@ -3,24 +3,13 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
+import clsx from "clsx";
+import { ChevronDown, ChevronLeft } from "lucide-react";
+
 import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { Avatar, Card, EmptyState, ListSkeleton } from "@/src/components/ui/Display";
 import { scoresByMonth } from "@/src/lib/scoring";
-
-type MemberTotal = {
-  uid: string;
-  name: string;
-  points: number;
-  chores: number;
-};
-
-type MonthGroup = {
-  key: string; // "2026-07"
-  label: string; // "July 2026"
-  totalPoints: number;
-  totalChores: number;
-  members: MemberTotal[];
-};
 
 const MONTH_LABELS = [
   "January", "February", "March", "April", "May", "June",
@@ -36,131 +25,98 @@ export default function ScoreHistoryPage() {
 }
 
 function ScoreHistoryInner() {
-  const { uid, members, ledger, dataLoading, error } = useReadyHousehold();
-  const loading = dataLoading;
+  const { uid, members, ledger, dataLoading } = useReadyHousehold();
   // null = newest month open by default; "" = all collapsed
   const [openChoice, setOpenChoice] = useState<string | null>(null);
 
-  const months = useMemo<MonthGroup[]>(() => {
-    const nameOf = (u: string) =>
-      members.find((m) => m.uid === u)?.name ?? "Member";
-
-    return scoresByMonth(ledger).map((m) => {
-      const [y, mo] = m.key.split("-").map(Number);
-      return {
-        key: m.key,
-        label: `${MONTH_LABELS[mo - 1]} ${y}`,
-        totalPoints: m.totalPoints,
-        totalChores: m.totalChores,
-        members: m.members.map((x) => ({
-          uid: x.uid,
-          name: nameOf(x.uid),
-          points: x.points,
-          chores: x.chores,
-        })),
-      };
-    });
-  }, [ledger, members]);
-
+  const months = useMemo(() => scoresByMonth(ledger), [ledger]);
   const openMonth = openChoice ?? months[0]?.key ?? null;
-  const setOpenMonth = (key: string | null) => setOpenChoice(key ?? "");
+
+  const memberOf = (u: string) => members.find((m) => m.uid === u);
 
   return (
-    <div className="space-y-6">
-      <div className="cq-card p-5 flex items-start justify-between">
-        <div>
-          <div className="cq-title">Monthly Score History</div>
-          <div className="cq-subtitle">Every month’s leaderboard, all in one place</div>
-          {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
-        </div>
-
-        <Link href="/score" className="cq-btn text-sm">
-          ← Back to Score
+    <div className="space-y-5">
+      <div>
+        <Link href="/score" className="inline-flex items-center gap-1 text-sm font-bold text-brand-strong hover:underline">
+          <ChevronLeft size={16} aria-hidden="true" /> Leaderboard
         </Link>
+        <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-ink">Monthly scores</h1>
+        <p className="text-sm text-muted">Every month&apos;s leaderboard, all in one place.</p>
       </div>
 
-      {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
+      {dataLoading ? <ListSkeleton rows={3} /> : null}
 
-      {!loading && months.length === 0 ? (
-        <div className="cq-card p-8 text-center">
-          <div className="text-5xl mb-3">📆</div>
-          <div className="font-semibold text-gray-700">No score history yet</div>
-          <div className="text-sm text-gray-500 mt-1">
-            Monthly totals will show up here once chores are completed
-          </div>
-        </div>
+      {!dataLoading && months.length === 0 ? (
+        <EmptyState
+          mood="sleepy"
+          title="No score history yet"
+          description="Monthly totals show up here once chores are completed."
+        />
       ) : null}
 
       <div className="space-y-3">
         {months.map((month) => {
           const isOpen = openMonth === month.key;
+          const [y, m] = month.key.split("-").map(Number);
           const champion = month.members[0];
+          const championMember = champion ? memberOf(champion.uid) : undefined;
 
           return (
-            <div key={month.key} className="cq-card overflow-hidden">
+            <Card key={month.key} className="overflow-hidden">
               <button
                 type="button"
-                onClick={() => setOpenMonth(isOpen ? null : month.key)}
-                className="w-full p-5 flex items-center justify-between text-left hover:bg-gray-50/50 transition">
-                <div>
-                  <div className="text-lg font-semibold">{month.label}</div>
-                  <div className="text-sm text-gray-500 mt-0.5">
-                    {champion ? `👑 ${champion.name} led with ${champion.points} pts` : "No activity"}
+                onClick={() => setOpenChoice(isOpen ? "" : month.key)}
+                aria-expanded={isOpen}
+                className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-surface-2">
+                {champion ? (
+                  <Avatar
+                    uid={champion.uid}
+                    name={championMember?.name ?? "Former member"}
+                    emoji={championMember?.avatar}
+                    size={44}
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <div className="font-extrabold text-ink">
+                    {MONTH_LABELS[m - 1]} {y}
+                  </div>
+                  <div className="truncate text-xs text-muted">
+                    {champion
+                      ? `👑 ${champion.uid === uid ? "You" : (championMember?.name ?? "Former member")} won with ${champion.points} pts`
+                      : "No activity"}
                   </div>
                 </div>
-
-                <div className="flex items-center gap-4 shrink-0">
-                  <div className="text-right">
-                    <div className="text-xl font-bold text-purple-600">
-                      {month.totalPoints}
-                    </div>
-                    <div className="text-xs text-gray-500">total points</div>
-                  </div>
-                  <div className="text-gray-400">{isOpen ? "▲" : "▼"}</div>
+                <div className="text-right">
+                  <div className="text-lg font-extrabold text-brand-strong">{month.totalPoints}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-muted">pts</div>
                 </div>
+                <ChevronDown size={18} className={clsx("text-faint transition-transform", isOpen && "rotate-180")} aria-hidden="true" />
               </button>
 
               {isOpen ? (
-                <div className="px-5 pb-5 space-y-2 border-t border-gray-100 pt-4">
-                  {month.members.map((m, idx) => {
-                    const rankBadge =
-                      idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `#${idx + 1}`;
-                    const isCurrentUser = m.uid === uid;
-
+                <div className="divide-y divide-line border-t border-line">
+                  {month.members.map((s, idx) => {
+                    const mem = memberOf(s.uid);
                     return (
-                      <div
-                        key={m.uid}
-                        className={
-                          "cq-card-soft p-3 flex items-center justify-between " +
-                          (isCurrentUser ? "border-2 border-purple-200 bg-purple-50/30" : "")
-                        }>
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-8 text-center font-semibold text-gray-600 shrink-0">
-                            {rankBadge}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="font-medium truncate">
-                              {m.name}
-                              {isCurrentUser ? (
-                                <span className="cq-pill text-xs ml-2">You</span>
-                              ) : null}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {m.chores} chores completed
-                            </div>
-                          </div>
+                      <div key={s.uid} className={clsx("flex items-center gap-3 px-4 py-3", s.uid === uid && "bg-brand-soft")}>
+                        <div className="w-6 text-center text-sm font-extrabold text-muted">
+                          {idx < 3 ? ["🥇", "🥈", "🥉"][idx] : idx + 1}
                         </div>
-
-                        <div className="text-right shrink-0">
-                          <div className="font-bold text-purple-600">{m.points}</div>
-                          <div className="text-xs text-gray-500">points</div>
+                        <Avatar uid={s.uid} name={mem?.name ?? "Former member"} emoji={mem?.avatar} size={32} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-bold text-ink">
+                            {mem?.name ?? "Former member"}
+                            {s.uid === uid ? <span className="cq-pill ml-2 px-2 py-0.5">You</span> : null}
+                          </div>
+                          <div className="text-xs text-muted">{s.chores} chores</div>
                         </div>
+                        <div className="font-extrabold text-brand-strong">{s.points}</div>
                       </div>
                     );
                   })}
                 </div>
               ) : null}
-            </div>
+            </Card>
           );
         })}
       </div>
