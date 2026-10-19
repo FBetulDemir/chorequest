@@ -33,7 +33,8 @@ export default function RequireAuth({
   useEffect(() => {
     if (loading) return;
     if (!uid) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      // New visitors opening the app see the welcome tour; deep links go to sign-in
+      router.replace(pathname === "/" ? "/welcome" : `/login?next=${encodeURIComponent(pathname)}`);
       return;
     }
     if (!error && setupIncomplete && !onSetup) router.replace("/setup");

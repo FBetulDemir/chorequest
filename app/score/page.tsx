@@ -8,7 +8,7 @@ import { CalendarRange, Flame, Share2 } from "lucide-react";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
-import { Button } from "@/src/components/ui/Button";
+import { buttonClasses } from "@/src/components/ui/Button";
 import { Avatar, Card, EmptyState, ListRow, ListSkeleton, Segmented, SectionTitle } from "@/src/components/ui/Display";
 import { getRangeMs, type RangeKey } from "@/src/lib/ledgerHelpers";
 import { scoresInRange, streakFor } from "@/src/lib/scoring";
@@ -96,10 +96,8 @@ function ScoreInner() {
           title="It's more fun together"
           description="Invite your partner or roommates to start a friendly competition."
           action={
-            <Link href="/household">
-              <Button variant="primary">
-                <Share2 size={16} aria-hidden="true" /> Invite someone
-              </Button>
+            <Link href="/household" className={buttonClasses({ variant: "primary" })}>
+              <Share2 size={16} aria-hidden="true" /> Invite someone
             </Link>
           }
           compact

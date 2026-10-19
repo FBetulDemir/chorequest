@@ -41,6 +41,19 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
+const BASE =
+  "inline-flex select-none items-center justify-center font-bold transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
+
+/** Button styling for other elements, e.g. a Link that should look like a button. */
+export function buttonClasses({
+  variant = "secondary",
+  size = "md",
+  block = false,
+  className,
+}: { variant?: Variant; size?: Size; block?: boolean; className?: string } = {}) {
+  return clsx(BASE, VARIANTS[variant], SIZES[size], block && "w-full", className);
+}
+
 export function Button({
   variant = "secondary",
   size = "md",
@@ -57,13 +70,7 @@ export function Button({
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={clsx(
-        "inline-flex select-none items-center justify-center font-bold transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0",
-        VARIANTS[variant],
-        SIZES[size],
-        block && "w-full",
-        className,
-      )}
+      className={buttonClasses({ variant, size, block, className })}
       {...rest}>
       {loading ? <Spinner /> : null}
       {children}

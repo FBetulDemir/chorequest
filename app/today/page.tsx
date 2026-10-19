@@ -9,7 +9,7 @@ import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
 import { ChoreCard } from "@/src/components/ChoreCard";
 import { useChoreActions } from "@/src/components/useChoreActions";
-import { Button } from "@/src/components/ui/Button";
+import { buttonClasses } from "@/src/components/ui/Button";
 import {
   Avatar,
   EmptyState,
@@ -217,8 +217,8 @@ function TodayInner() {
               title="Let’s add some chores"
               description="Pick from the starter pack or create your own on the Household tab."
               action={
-                <Link href="/household#chores">
-                  <Button variant="primary">Add chores</Button>
+                <Link href="/household#chores" className={buttonClasses({ variant: "primary" })}>
+                  Add chores
                 </Link>
               }
             />
