@@ -9,6 +9,7 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { useHousehold } from "@/src/components/HouseholdProvider";
 import { enablePush, pushSupported, savedPushToken } from "@/src/lib/push";
+import { purchasesAvailable, refreshEntitlement } from "@/src/lib/purchases";
 import { pathFromAppLink } from "@/src/lib/invite";
 
 // Screens where Android's back button should leave the app instead of going back
@@ -85,6 +86,12 @@ export function NativeShell() {
       handle.then((h) => h.remove()).catch(() => {});
     };
   }, [uid, router]);
+
+  // Subscription state from the store, so a fresh purchase unlocks Plus immediately
+  useEffect(() => {
+    if (!uid || !Capacitor.isNativePlatform() || !purchasesAvailable()) return;
+    refreshEntitlement(uid).catch(() => {});
+  }, [uid]);
 
   // Mark the document so CSS can tell it's running inside the app
   useEffect(() => {

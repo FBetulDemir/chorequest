@@ -24,6 +24,11 @@ import {
   updateReward,
 } from "@/src/lib/rewards";
 import { walletFor } from "@/src/lib/wallet";
+import { usePlan } from "@/src/components/Plus";
+import { isPlus } from "@/src/lib/plan";
+import Link from "next/link";
+import { buttonClasses } from "@/src/components/ui/Button";
+import { Mascot } from "@/src/components/ui/Mascot";
 import { timeAgo } from "@/src/lib/dates";
 import { friendlyError } from "@/src/lib/errors";
 import type { Redemption, Reward } from "@/src/lib/types";
@@ -31,8 +36,26 @@ import type { Redemption, Reward } from "@/src/lib/types";
 export default function RewardsPage() {
   return (
     <RequireAuth>
-      <RewardsInner />
+      <RewardsGate />
     </RequireAuth>
+  );
+}
+
+function RewardsGate() {
+  const plan = usePlan();
+  if (isPlus(plan)) return <RewardsInner />;
+  return (
+    <div className="mx-auto max-w-md space-y-5 text-center">
+      <Mascot mood="celebrate" size={96} className="mx-auto text-ink" bob />
+      <h1 className="text-2xl font-extrabold tracking-tight text-ink">Turn points into treats 🎁</h1>
+      <p className="text-sm text-muted">
+        With ChoreQuest Plus your household sets up rewards, like picking the movie or breakfast in bed, and everyone
+        spends the coins they earn from chores.
+      </p>
+      <Link href="/plus" className={buttonClasses({ variant: "primary", size: "lg", block: true })}>
+        Unlock with Plus
+      </Link>
+    </div>
   );
 }
 

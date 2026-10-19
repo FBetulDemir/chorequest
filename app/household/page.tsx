@@ -18,6 +18,9 @@ import { friendlyError } from "@/src/lib/errors";
 import { copyText, shareText } from "@/src/lib/native";
 import { inviteMessage } from "@/src/lib/invite";
 import { isOnlyMember, leaveHousehold } from "@/src/lib/account";
+import { usePlan } from "@/src/components/Plus";
+import { FREE_LIMITS, memberLimitReached } from "@/src/lib/plan";
+import Link from "next/link";
 
 export default function HouseholdPage() {
   return (
@@ -35,6 +38,8 @@ function HouseholdInner() {
   const [leaveBusy, setLeaveBusy] = useState(false);
   const router = useRouter();
   const alone = isOnlyMember(household, uid);
+  const plan = usePlan();
+  const full = memberLimitReached(plan, members.length);
 
   async function leave() {
     setLeaveBusy(true);
@@ -96,6 +101,15 @@ function HouseholdInner() {
       <Card className="p-5">
         <SectionTitle>Invite someone</SectionTitle>
         <p className="mt-1 text-sm text-muted">They sign up, then enter this code on the setup screen.</p>
+        {full ? (
+          <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-700">
+            Free households have up to {FREE_LIMITS.members} members.{" "}
+            <Link href="/plus" className="font-extrabold underline">
+              Upgrade to Plus
+            </Link>{" "}
+            to invite more.
+          </p>
+        ) : null}
         <div className="mt-4 flex items-center gap-2">
           <div
             className="flex-1 rounded-2xl border-2 border-dashed border-purple-200 bg-brand-soft px-4 py-3 text-center font-mono text-2xl font-extrabold tracking-[0.3em] text-brand-strong"

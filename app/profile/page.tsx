@@ -23,6 +23,9 @@ import { analyticsAvailable, hasAnalyticsConsent, setAnalyticsConsent } from "@/
 import { deleteAccount, isOnlyMember, signInMethod } from "@/src/lib/account";
 import { isCancelled } from "@/src/lib/socialAuth";
 import { badgesFor } from "@/src/lib/badges";
+import { usePlan } from "@/src/components/Plus";
+import { PAYWALL_ENABLED } from "@/src/lib/plan";
+import { Sparkles } from "lucide-react";
 
 export default function ProfilePage() {
   return (
@@ -45,6 +48,7 @@ function ProfileInner() {
 
   const name = profile?.name ?? "";
   const email = user?.email ?? profile?.email ?? "";
+  const plan = usePlan();
 
   async function sendReset() {
     if (!email) return;
@@ -101,6 +105,14 @@ function ProfileInner() {
       <section className="space-y-3">
         <SectionTitle>Your household</SectionTitle>
         <Card className="divide-y divide-line overflow-hidden">
+          {PAYWALL_ENABLED ? (
+            <ListRow
+              href="/plus"
+              icon={<Sparkles size={18} />}
+              title="ChoreQuest Plus"
+              description={plan.tier === "plus" ? (plan.reason === "founder" ? "Founding household 💜" : "Active 💜") : "Unlimited members, chores and rewards"}
+            />
+          ) : null}
           <ListRow href="/household" icon={<House size={18} />} title={household.name} description="Members, invite code and chores" />
           <ListRow href="/history" icon={<History size={18} />} title="Activity history" description="Everything that was completed or skipped" />
           <ListRow href="/score/history" icon={<CalendarRange size={18} />} title="Monthly scores" description="Every month's leaderboard" />

@@ -20,6 +20,10 @@ const MESSAGES: Record<string, string> = {
   "auth/operation-not-allowed": "This sign-in method isn't available yet. Please use your email.",
   "auth/popup-blocked": "Your browser blocked the sign-in window. Allow pop-ups and try again.",
 
+  // ChoreQuest
+  "household-full":
+    "This household is full on the free plan. Ask a member to upgrade to ChoreQuest Plus so you can join.",
+
   // Firestore
   "permission-denied": "You don't have permission to do that.",
   unavailable: "You seem to be offline. Please try again when you're connected.",

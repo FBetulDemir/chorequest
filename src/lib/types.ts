@@ -11,11 +11,21 @@ export type UserProfile = {
   updatedAt: number;
 };
 
+export type HouseholdPlan = {
+  tier: "plus";
+  expiresAt: number | null; // null = doesn't expire
+  store?: string;
+  productId?: string;
+  purchaserUid?: string;
+  updatedAt?: number;
+};
+
 export type Household = {
   id: string;
   name: string;
   code: string; // share this with partner to join
   members: Record<string, boolean>; // { [uid]: true }
+  plan?: HouseholdPlan | null; // set by the server only (see functions/)
   createdAt: number;
   updatedAt: number;
 };

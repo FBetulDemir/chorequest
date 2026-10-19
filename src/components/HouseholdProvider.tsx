@@ -51,6 +51,7 @@ function toHousehold(id: string, d: DocumentData): Household {
     name: d.name ?? "Household",
     code: d.code ?? "",
     members: d.members ?? {},
+    plan: d.plan ?? null,
     createdAt: Number(d.createdAt ?? Date.now()),
     updatedAt: Number(d.updatedAt ?? Date.now()),
   };
