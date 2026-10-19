@@ -8,6 +8,7 @@ import { recordCompletion, recordSkip, recordUndo } from "@/src/lib/points";
 import { buildStatusByOccurrence, entryOccurrenceKey, occurrenceKey } from "@/src/lib/ledgerHelpers";
 import { splitChoreTitle } from "@/src/lib/choreCatalog";
 import { friendlyError } from "@/src/lib/errors";
+import { track } from "@/src/lib/analytics";
 import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
 
 type Target = { chore: ChoreTemplate; dayKey: string };
@@ -56,6 +57,7 @@ export function useChoreActions() {
         status: statusRef.current.get(key),
       });
       if (origin) celebrate({ ...origin, points: t.chore.points });
+      track("chore_completed", { points: t.chore.points, frequency: t.chore.frequency });
       const { name } = splitChoreTitle(t.chore.title);
       toast(`Nice! +${t.chore.points} for ${name}`, {
         action: { label: "Undo", onClick: () => undo(entry) },

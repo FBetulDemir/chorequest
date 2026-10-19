@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import clsx from "clsx";
-import { Bell, BellRing, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { BarChart3, Bell, BellRing, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
@@ -18,6 +18,7 @@ import { friendlyError } from "@/src/lib/errors";
 import { applyReminder, loadReminder, remindersSupported, type ReminderSettings } from "@/src/lib/reminders";
 import { PUSH_CONFIGURED, disablePush, enablePush, savedPushToken } from "@/src/lib/push";
 import { isNative } from "@/src/lib/native";
+import { analyticsAvailable, hasAnalyticsConsent, setAnalyticsConsent } from "@/src/lib/analytics";
 
 export default function ProfilePage() {
   return (
@@ -98,6 +99,8 @@ function ProfileInner() {
           <ListRow href="/score/history" icon={<CalendarRange size={18} />} title="Monthly scores" description="Every month's leaderboard" />
         </Card>
       </section>
+
+      <PrivacySection />
 
       {/* Account */}
       <section className="space-y-3">
@@ -308,6 +311,34 @@ function RemindersSection() {
             />
           </label>
         ) : null}
+      </Card>
+    </section>
+  );
+}
+
+function PrivacySection() {
+  const [consent, setConsent] = useState(() => hasAnalyticsConsent());
+  if (!analyticsAvailable()) return null;
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Privacy</SectionTitle>
+      <Card className="flex items-center gap-3 px-4 py-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand-strong" aria-hidden="true">
+          <BarChart3 size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-ink">Share anonymous usage stats</div>
+          <div className="text-xs text-muted">Helps us see which screens people use. Never your chores or names.</div>
+        </div>
+        <Switch
+          label="Share anonymous usage stats"
+          checked={consent}
+          onChange={(on) => {
+            setConsent(on);
+            setAnalyticsConsent(on).catch(() => {});
+          }}
+        />
       </Card>
     </section>
   );
