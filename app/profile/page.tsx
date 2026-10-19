@@ -2,19 +2,20 @@
 
 import React, { useState } from "react";
 import clsx from "clsx";
-import { CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
+import { Bell, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun } from "lucide-react";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useAuth } from "@/src/components/AuthProvider";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
 import { useFeedback } from "@/src/components/ui/Feedback";
 import { Button } from "@/src/components/ui/Button";
-import { Avatar, Card, ListRow, Segmented, SectionTitle } from "@/src/components/ui/Display";
+import { Avatar, Card, ListRow, Segmented, SectionTitle, Switch } from "@/src/components/ui/Display";
 import { ConfirmSheet, Sheet } from "@/src/components/ui/Sheet";
 import { updateUserProfile } from "@/src/lib/profile";
 import { AVATAR_EMOJIS } from "@/src/lib/choreCatalog";
 import { useThemePreference, type ThemePreference } from "@/src/lib/theme";
 import { friendlyError } from "@/src/lib/errors";
+import { applyReminder, loadReminder, remindersSupported, type ReminderSettings } from "@/src/lib/reminders";
 
 export default function ProfilePage() {
   return (
@@ -83,6 +84,8 @@ function ProfileInner() {
           ]}
         />
       </section>
+
+      <RemindersSection />
 
       {/* Shortcuts */}
       <section className="space-y-3">
@@ -209,5 +212,63 @@ function EditProfileSheet({
         {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
       </div>
     </Sheet>
+  );
+}
+
+function RemindersSection() {
+  const { toast } = useFeedback();
+  // Profile only renders in the browser (behind RequireAuth), so local storage is available
+  const [settings, setSettings] = useState<ReminderSettings>(() => loadReminder());
+  const supported = remindersSupported();
+
+  async function update(next: ReminderSettings) {
+    setSettings(next);
+    try {
+      const result = await applyReminder(next);
+      if (result === "denied") {
+        setSettings({ ...next, enabled: false });
+        toast("Notifications are off for ChoreQuest. Turn them on in your phone's Settings.", { tone: "error" });
+      } else if (result === "scheduled") {
+        toast(`Daily reminder set for ${next.time} ⏰`);
+      }
+    } catch {
+      toast("Couldn't set the reminder. Please try again.", { tone: "error" });
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Reminders</SectionTitle>
+      <Card className="divide-y divide-line overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-soft text-brand-strong" aria-hidden="true">
+            <Bell size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-ink">Daily reminder</div>
+            <div className="text-xs text-muted">
+              {supported ? "A nudge to check today's chores" : "Available in the ChoreQuest app for iPhone and Android"}
+            </div>
+          </div>
+          <Switch
+            label="Daily reminder"
+            checked={supported && settings.enabled}
+            disabled={!supported}
+            onChange={(enabled) => update({ ...settings, enabled })}
+          />
+        </div>
+        {supported && settings.enabled ? (
+          <label className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="text-sm font-bold text-ink">Remind me at</span>
+            <input
+              type="time"
+              className="cq-input w-auto"
+              value={settings.time}
+              onChange={(e) => e.target.value && update({ ...settings, time: e.target.value })}
+            />
+          </label>
+        ) : null}
+      </Card>
+    </section>
   );
 }
