@@ -7,9 +7,12 @@ import { SocialLogin } from "@capgo/capacitor-social-login";
 import {
   GoogleAuthProvider,
   OAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signInWithCredential,
   signInWithPopup,
   updateProfile,
+  type User,
 } from "firebase/auth";
 
 import { auth } from "@/src/lib/firebase";
@@ -56,28 +59,18 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export async function signInWithGoogle(): Promise<void> {
-  if (!isNative()) {
-    await signInWithPopup(auth, new GoogleAuthProvider());
-    return;
-  }
+/** Native Google sheet → Firebase credential. */
+async function nativeGoogleCredential() {
   await initNative();
   const { result } = await SocialLogin.login({ provider: "google", options: {} });
   if (result.responseType !== "online" || !result.idToken) {
     throw new Error("Google sign-in didn't return an identity token");
   }
-  await signInWithCredential(auth, GoogleAuthProvider.credential(result.idToken));
+  return GoogleAuthProvider.credential(result.idToken);
 }
 
-export async function signInWithApple(): Promise<void> {
-  if (!isNative()) {
-    const provider = new OAuthProvider("apple.com");
-    provider.addScope("email");
-    provider.addScope("name");
-    await signInWithPopup(auth, provider);
-    return;
-  }
-
+/** Native Apple sheet → Firebase credential (nonce-protected) and the name, if Apple shared it. */
+async function nativeAppleCredential() {
   await initNative();
   // Apple gets the hashed nonce; Firebase checks it against the raw one
   const rawNonce = randomNonce();
@@ -86,15 +79,44 @@ export async function signInWithApple(): Promise<void> {
     options: { scopes: ["email", "name"], nonce: await sha256Hex(rawNonce) },
   });
   if (!result.idToken) throw new Error("Apple sign-in didn't return an identity token");
-
-  const cred = await signInWithCredential(
-    auth,
-    new OAuthProvider("apple.com").credential({ idToken: result.idToken, rawNonce }),
-  );
-
-  // Apple only shares the name on the very first sign-in; keep it for the setup screen
   const name = [result.profile.givenName, result.profile.familyName].filter(Boolean).join(" ");
+  return { credential: new OAuthProvider("apple.com").credential({ idToken: result.idToken, rawNonce }), name };
+}
+
+function appleProvider() {
+  const provider = new OAuthProvider("apple.com");
+  provider.addScope("email");
+  provider.addScope("name");
+  return provider;
+}
+
+export async function signInWithGoogle(): Promise<void> {
+  if (!isNative()) {
+    await signInWithPopup(auth, new GoogleAuthProvider());
+    return;
+  }
+  await signInWithCredential(auth, await nativeGoogleCredential());
+}
+
+export async function signInWithApple(): Promise<void> {
+  if (!isNative()) {
+    await signInWithPopup(auth, appleProvider());
+    return;
+  }
+  const { credential, name } = await nativeAppleCredential();
+  const cred = await signInWithCredential(auth, credential);
+  // Apple only shares the name on the very first sign-in; keep it for the setup screen
   if (name && !cred.user.displayName) await updateProfile(cred.user, { displayName: name }).catch(() => {});
+}
+
+/** Confirms it's really the user (needed before sensitive actions like deleting the account). */
+export async function reauthenticateWithProvider(user: User, provider: SocialProvider): Promise<void> {
+  if (!isNative()) {
+    await reauthenticateWithPopup(user, provider === "apple" ? appleProvider() : new GoogleAuthProvider());
+    return;
+  }
+  const credential = provider === "apple" ? (await nativeAppleCredential()).credential : await nativeGoogleCredential();
+  await reauthenticateWithCredential(user, credential);
 }
 
 /** True when the user closed the sign-in sheet themselves (not worth an error message). */

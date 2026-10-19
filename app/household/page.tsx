@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Copy, History, Pencil, Share2 } from "lucide-react";
+import { Copy, History, LogOut, Pencil, Share2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useReadyHousehold } from "@/src/components/HouseholdProvider";
@@ -9,13 +10,14 @@ import ChoreManager from "@/src/components/ChoreManager";
 import { useFeedback } from "@/src/components/ui/Feedback";
 import { Button, IconButton } from "@/src/components/ui/Button";
 import { Avatar, Card, ListRow, SectionTitle } from "@/src/components/ui/Display";
-import { Sheet } from "@/src/components/ui/Sheet";
+import { ConfirmSheet, Sheet } from "@/src/components/ui/Sheet";
 import { renameHousehold } from "@/src/lib/households";
 import { getRangeMs } from "@/src/lib/ledgerHelpers";
 import { scoresInRange } from "@/src/lib/scoring";
 import { friendlyError } from "@/src/lib/errors";
 import { copyText, shareText } from "@/src/lib/native";
 import { inviteMessage } from "@/src/lib/invite";
+import { isOnlyMember, leaveHousehold } from "@/src/lib/account";
 
 export default function HouseholdPage() {
   return (
@@ -29,6 +31,23 @@ function HouseholdInner() {
   const { uid, household, householdId, members, ledger } = useReadyHousehold();
   const { toast } = useFeedback();
   const [renaming, setRenaming] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const router = useRouter();
+  const alone = isOnlyMember(household, uid);
+
+  async function leave() {
+    setLeaveBusy(true);
+    try {
+      await leaveHousehold(uid, householdId);
+      toast(`You left ${household.name}`);
+      router.replace("/setup");
+    } catch (e) {
+      toast(friendlyError(e, "Couldn't leave the household. Please try again."), { tone: "error" });
+      setLeaveBusy(false);
+      setLeaving(false);
+    }
+  }
 
   const weekly = useMemo(() => {
     const { startMs, endMs } = getRangeMs("week");
@@ -130,7 +149,29 @@ function HouseholdInner() {
           title="Activity history"
           description="Everything your household has done, with undo"
         />
+        <ListRow
+          icon={<LogOut size={18} />}
+          title="Leave household"
+          description="Join or create a different one"
+          onClick={() => setLeaving(true)}
+          danger
+        />
       </Card>
+
+      <ConfirmSheet
+        open={leaving}
+        title={`Leave ${household.name}?`}
+        message={
+          alone
+            ? "You're the only member. If you leave, nobody will be able to open this household or its chores again."
+            : "You'll stop seeing its chores and leaderboard. Your past points stay in its history, and you can rejoin with the invite code."
+        }
+        confirmLabel="Leave"
+        danger
+        busy={leaveBusy}
+        onConfirm={leave}
+        onCancel={() => setLeaving(false)}
+      />
 
       {renaming ? (
         <RenameSheet

@@ -1,12 +1,13 @@
 // ChoreQuest Cloud Functions: push notifications.
 // NOT DEPLOYED YET. See docs/MOBILE.md ("Push notifications") before deploying.
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
+import * as functionsV1 from "firebase-functions/v1";
 
 import { isCompletion, weeklyPoints } from "./scoring";
 
@@ -106,3 +107,30 @@ export const announceWeeklyWinner = onSchedule(
     }
   },
 );
+
+/**
+ * After an account is deleted: remove the profile (and its push tokens), take the
+ * user out of any household, and delete households nobody is left in.
+ * The app already removes what it can; this catches the rest with admin rights.
+ */
+export const cleanupDeletedUser = functionsV1
+  .region("europe-west1")
+  .auth.user()
+  .onDelete(async (user) => {
+    const uid = user.uid;
+
+    const households = await db.collection("households").where(`members.${uid}`, "==", true).get();
+    for (const h of households.docs) {
+      const members = (h.get("members") ?? {}) as Record<string, boolean>;
+      const others = Object.keys(members).filter((m) => m !== uid && members[m] === true);
+      if (others.length === 0) {
+        await db.recursiveDelete(h.ref); // chores, ledger and the household itself
+        logger.info("Deleted household of removed account", { householdId: h.id });
+      } else {
+        await h.ref.update({ [`members.${uid}`]: FieldValue.delete(), updatedAt: Date.now() });
+      }
+    }
+
+    await db.recursiveDelete(db.doc(`users/${uid}`));
+    logger.info("Cleaned up deleted account", { uid, households: households.size });
+  });
