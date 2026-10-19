@@ -1,15 +1,12 @@
 // app/score/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
-import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
-import { listLedgerEntries } from "@/src/lib/points";
-import type { PointsLedgerEntry } from "@/src/lib/types";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
 import { getRangeMs, type RangeKey } from "@/src/lib/ledgerHelpers";
+import { scoresInRange, streakFor } from "@/src/lib/scoring";
 
 type Row = {
   uid: string;
@@ -29,220 +26,37 @@ export default function ScorePage() {
 }
 
 function ScoreInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
-
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
+  const { uid, members, ledger, dataLoading, error } = useReadyHousehold();
+  const loading = dataLoading;
   const [range, setRange] = useState<RangeKey>("month");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function boot() {
-      const p = await getUserProfile(uid);
-      const hid = p?.householdId ?? null;
-      setHouseholdId(hid);
-
-      if (hid) {
-        const mem = await listHouseholdMembers(hid);
-        setMembers(mem);
-      }
-    }
-    boot();
-  }, [uid]);
-
-  useEffect(() => {
-    if (!householdId) return;
-
-    async function load(hid: string) {
-      setLoading(true);
-      setError(null);
-      try {
-        const e = await listLedgerEntries(hid, 5000);
-        setLedger(e);
-      } catch (e: any) {
-        setError(e?.message ?? "Failed to load score");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load(householdId);
-  }, [householdId]);
 
   const rows = useMemo(() => {
     const { startMs, endMs } = getRangeMs(range);
-
-    // Only count completed entries by createdAt in the selected range
-    const completionEvents = ledger.filter((e) => {
-      const t = Number(e.createdAt ?? 0);
-      if (!(t >= startMs && t < endMs)) return false;
-      const reason = String(e.reason ?? "");
-      const delta = Number(e.delta ?? 0);
-      return reason.startsWith("Completed:") && delta > 0;
-    });
-
-    const byUid = new Map<
-      string,
-      {
-        points: number;
-        chores: number;
-        choreNames: string[];
-        completionDays: Set<string>;
-      }
-    >();
-
-    for (const e of completionEvents) {
-      const who = String(e.actorUid ?? "");
-      const cur = byUid.get(who) ?? {
-        points: 0,
-        chores: 0,
-        choreNames: [],
-        completionDays: new Set<string>(),
-      };
-      cur.points += Number(e.delta ?? 0);
-      cur.chores += 1;
-
-      // Extract chore name from reason
-      const reason = String(e.reason ?? "");
-      const choreName = reason.replace("Completed: ", "");
-      cur.choreNames.push(choreName);
-
-      // Track completion day
-      const dayKey =
-        e.dayKey ?? new Date(Number(e.createdAt ?? 0)).toISOString().split("T")[0];
-      cur.completionDays.add(dayKey);
-
-      byUid.set(who, cur);
-    }
-
-    // Net out undone completions so score reflects Undo actions
-    const undoEvents = ledger.filter((e) => {
-      const t = Number(e.createdAt ?? 0);
-      if (!(t >= startMs && t < endMs)) return false;
-      const reason = String(e.reason ?? "");
-      const delta = Number(e.delta ?? 0);
-      return reason.startsWith("Undo:") && delta < 0;
-    });
-
-    for (const e of undoEvents) {
-      const who = String(e.actorUid ?? "");
-      const cur = byUid.get(who) ?? {
-        points: 0,
-        chores: 0,
-        choreNames: [],
-        completionDays: new Set<string>(),
-      };
-      cur.points += Number(e.delta ?? 0);
-      cur.chores = Math.max(0, cur.chores - 1);
-      byUid.set(who, cur);
-    }
+    const scores = scoresInRange(ledger, startMs, endMs);
 
     const nameOf = (u: string) =>
       members.find((m) => m.uid === u)?.name ?? "Member";
 
-    // Calculate streak for a user
-    const calculateStreak = (uid: string): number => {
-      const userEvents = completionEvents
-        .filter((e) => String(e.actorUid ?? "") === uid)
-        .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0));
+    // include all members (even 0), plus anyone who scored but has since left
+    const uids = new Set([...members.map((m) => m.uid), ...scores.keys()]);
 
-      if (userEvents.length === 0) return 0;
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayMs = today.getTime();
-
-      let streak = 0;
-      let checkDate = new Date(todayMs);
-
-      const daySet = new Set<string>();
-      userEvents.forEach((e) => {
-        const d = new Date(Number(e.createdAt ?? 0));
-        d.setHours(0, 0, 0, 0);
-        daySet.add(d.toISOString().split("T")[0]);
-      });
-
-      for (let i = 0; i < 30; i++) {
-        const checkKey = checkDate.toISOString().split("T")[0];
-        if (daySet.has(checkKey)) {
-          streak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else if (i === 0) {
-          // Check yesterday if nothing today
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-
-      return streak;
-    };
-
-    // Get top chore for a user
-    const getTopChore = (choreNames: string[]): string => {
-      if (choreNames.length === 0) return "—";
-
-      const counts = new Map<string, number>();
-      choreNames.forEach((name) => {
-        counts.set(name, (counts.get(name) ?? 0) + 1);
-      });
-
-      let maxCount = 0;
-      let topChore = "—";
-      counts.forEach((count, name) => {
-        if (count > maxCount) {
-          maxCount = count;
-          topChore = name;
-        }
-      });
-
-      return topChore;
-    };
-
-    const computed: Row[] = [];
-
-    // include all members (even 0)
-    for (const m of members) {
-      const v = byUid.get(m.uid) ?? {
-        points: 0,
-        chores: 0,
-        choreNames: [],
-        completionDays: new Set<string>(),
+    const computed: Row[] = [...uids].map((u) => {
+      const v = scores.get(u);
+      return {
+        uid: u,
+        name: nameOf(u),
+        points: v?.points ?? 0,
+        chores: v?.chores ?? 0,
+        streak: streakFor(ledger, u),
+        topChore: v?.topChore ?? "—",
       };
-      computed.push({
-        uid: m.uid,
-        name: m.name,
-        points: v.points,
-        chores: v.chores,
-        streak: calculateStreak(m.uid),
-        topChore: getTopChore(v.choreNames),
-      });
-    }
-
-    // also include any actorUid not in members (edge case)
-    for (const [u, v] of byUid.entries()) {
-      if (!computed.some((r) => r.uid === u)) {
-        computed.push({
-          uid: u,
-          name: nameOf(u),
-          points: v.points,
-          chores: v.chores,
-          streak: calculateStreak(u),
-          topChore: getTopChore(v.choreNames),
-        });
-      }
-    }
+    });
 
     computed.sort((a, b) => b.points - a.points);
     return computed;
   }, [ledger, members, range]);
 
   const champion = rows[0];
-
-  if (!householdId) return <div className="p-6">Loading…</div>;
 
   return (
     <div className="space-y-6">
@@ -257,7 +71,7 @@ function ScoreInner() {
           <div className="flex-1">
             <div className="text-2xl font-semibold">Leaderboard</div>
             <div className="opacity-90 text-sm">
-              Who's crushing it this period?
+              Who’s crushing it this period?
             </div>
 
             {champion ? (

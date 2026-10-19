@@ -10,7 +10,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
     return null;
   }
 
-  const d = snap.data() as any;
+  const d = snap.data();
 
   const profile = {
     uid,

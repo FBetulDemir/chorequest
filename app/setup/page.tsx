@@ -1,19 +1,12 @@
 // app/setup/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import {
-  ensureUserProfile,
-  getUserProfile,
-  updateUserProfile,
-} from "@/src/lib/profile";
-import {
-  createHousehold,
-  getHousehold,
-  joinHouseholdByCode,
-} from "@/src/lib/households";
+import { useHousehold } from "@/src/components/HouseholdProvider";
+import { updateUserProfile } from "@/src/lib/profile";
+import { createHousehold, joinHouseholdByCode } from "@/src/lib/households";
+import { friendlyError } from "@/src/lib/errors";
 
 export default function SetupPage() {
   return (
@@ -24,64 +17,38 @@ export default function SetupPage() {
 }
 
 function SetupInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
-  const email = user?.email ?? null;
+  const { uid: maybeUid, profile, household } = useHousehold();
+  const uid = maybeUid!; // RequireAuth guarantees a signed-in user
 
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const [name, setName] = useState("");
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [householdName, setHouseholdName] = useState<string>("");
-  const [householdCode, setHouseholdCode] = useState<string>("");
+  const [name, setName] = useState(profile?.name ?? "");
+  const savedName = profile?.name ?? "";
+  const householdId = profile?.householdId ?? null;
+  const householdName = household?.name ?? "";
+  const householdCode = household?.code ?? "";
 
   const [createName, setCreateName] = useState("ChoreQuest Home");
   const [joinCode, setJoinCode] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function loadAll() {
-    setError(null);
-    setLoading(true);
-    try {
-      // ✅ Ensure profile exists so new accounts (kb) don’t hang forever
-      await ensureUserProfile({ uid, email });
-
-      const p = await getUserProfile(uid);
-      setName(p?.name ?? "");
-      setHouseholdId(p?.householdId ?? null);
-
-      if (p?.householdId) {
-        const h = await getHousehold(p.householdId);
-        setHouseholdName(h?.name ?? "");
-        setHouseholdCode(h?.code ?? "");
-      } else {
-        setHouseholdName("");
-        setHouseholdCode("");
-      }
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load setup");
-    } finally {
-      setLoading(false);
-    }
+  function flash(message: string) {
+    setNotice(message);
+    window.setTimeout(() => setNotice(null), 2200);
   }
-
-  useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid]);
 
   async function saveName() {
     setBusy("name");
     setError(null);
     try {
+      // The live profile subscription updates the name everywhere.
       await updateUserProfile(uid, { name: name.trim() });
-
-      // Reload the page to clear Firestore cache and show updated name everywhere
-      window.location.reload();
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to save name");
+      flash("Name saved ✓");
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't save your name. Please try again."));
     } finally {
       setBusy(null);
     }
@@ -91,14 +58,12 @@ function SetupInner() {
     setBusy("create");
     setError(null);
     try {
-      const h = await createHousehold({
+      await createHousehold({
         uid,
         name: createName.trim() || "Household",
       });
-      await updateUserProfile(uid, { householdId: h.id });
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to create household");
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't create the household. Please try again."));
     } finally {
       setBusy(null);
     }
@@ -108,18 +73,28 @@ function SetupInner() {
     setBusy("join");
     setError(null);
     try {
-      const h = await joinHouseholdByCode({ uid, code: joinCode });
-      await updateUserProfile(uid, { householdId: h.id });
-      await loadAll();
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to join household");
+      await joinHouseholdByCode({ uid, code: joinCode });
+    } catch (e) {
+      const message = (e as Error)?.message;
+      setError(
+        message === "Household code not found."
+          ? "We couldn't find a household with that code. Check it and try again."
+          : friendlyError(e, "Couldn't join the household. Please try again."),
+      );
     } finally {
       setBusy(null);
     }
   }
 
-  if (loading)
-    return <div className="p-6 text-sm text-gray-600">Loading...</div>;
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(householdCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setError("Couldn't copy. Please select the code and copy it manually.");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -139,6 +114,11 @@ function SetupInner() {
             {error}
           </div>
         ) : null}
+        {notice ? (
+          <div className="mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-700">
+            {notice}
+          </div>
+        ) : null}
       </div>
 
       {/* Step 1: Your Profile */}
@@ -151,7 +131,7 @@ function SetupInner() {
             <div className="font-semibold text-gray-900">Your Profile</div>
             <div className="text-xs text-gray-500">How should we call you?</div>
           </div>
-          {name.trim() ? (
+          {savedName.trim() ? (
             <span className="ml-auto text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full">
               ✓ Done
             </span>
@@ -173,7 +153,9 @@ function SetupInner() {
             <button
               className="cq-btn-primary"
               type="button"
-              disabled={busy === "name" || !name.trim()}
+              disabled={
+                busy === "name" || !name.trim() || name.trim() === savedName
+              }
               onClick={saveName}>
               {busy === "name" ? "Saving..." : "Save Name"}
             </button>
@@ -233,10 +215,8 @@ function SetupInner() {
                   <button
                     className="cq-btn text-xs"
                     type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(householdCode);
-                    }}>
-                    Copy
+                    onClick={copyCode}>
+                    {copied ? "Copied ✓" : "Copy"}
                   </button>
                 </div>
                 <div className="text-xs text-gray-500">
@@ -248,7 +228,7 @@ function SetupInner() {
             /* Not connected - show options */
             <div className="space-y-4">
               <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 text-sm text-blue-700">
-                <strong>What's a household?</strong>
+                <strong>What’s a household?</strong>
                 <p className="mt-1 text-blue-600">
                   A household is your shared space in ChoreQuest. Everyone in
                   the same household shares chores, earns points together, and
@@ -265,7 +245,7 @@ function SetupInner() {
                       Start a New Household
                     </div>
                     <div className="text-xs text-gray-500">
-                      You're the first one here? Create a household and invite
+                      You’re the first one here? Create a household and invite
                       others.
                     </div>
                   </div>
@@ -329,15 +309,15 @@ function SetupInner() {
       </div>
 
       {/* What's next */}
-      {householdId && name.trim() ? (
+      {householdId && savedName.trim() ? (
         <div className="cq-card p-5">
           <div className="flex items-center gap-3">
             <div className="text-3xl">🎉</div>
             <div>
-              <div className="font-semibold text-gray-900">You're all set!</div>
+              <div className="font-semibold text-gray-900">You’re all set!</div>
               <div className="text-sm text-gray-500">
                 Head to <strong>Chores</strong> to add tasks, or{" "}
-                <strong>Today</strong> to see what's due.
+                <strong>Today</strong> to see what’s due.
               </div>
             </div>
           </div>

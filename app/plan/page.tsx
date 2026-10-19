@@ -1,66 +1,21 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
-import { listChoreTemplates } from "@/src/lib/chores";
-import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
-import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
-import { buildOccurrences } from "@/src/lib/schedule";
-import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { recordCompletion, recordSkip } from "@/src/lib/points";
+import { buildOccurrences, type Occurrence } from "@/src/lib/schedule";
+import {
+  buildStatusByOccurrence,
+  isOccurrenceDone,
+  occurrenceKey,
+} from "@/src/lib/ledgerHelpers";
+import { assigneeLabel } from "@/src/lib/assignee";
+import { friendlyError } from "@/src/lib/errors";
+import { useTodayStartMs } from "@/src/lib/useToday";
 
 type ViewMode = "upcoming" | "completed";
 type Freq = "daily" | "weekly" | "monthly" | "seasonal" | "all";
-
-function localDayKey(ms: number) {
-  const d = new Date(ms);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function startOfLocalDayMs(ms: number) {
-  const d = new Date(ms);
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-type Occ = {
-  templateId: string;
-  dayKey: string;
-  dueMs: number;
-  chore: ChoreTemplate;
-};
-
-function buildStatusByOccurrenceLocal(
-  ledger: PointsLedgerEntry[],
-): Map<string, { completedCount: number; skipped: boolean }> {
-  const map = new Map<string, { completedCount: number; skipped: boolean }>();
-
-  for (const e of ledger || []) {
-    const templateId = e.templateId ? String(e.templateId) : "";
-    if (!templateId) continue;
-
-    // Important: use local dayKey from createdAt to avoid UTC/local mismatches.
-    const dk = localDayKey(Number(e.createdAt ?? Date.now()));
-    const key = `${templateId}__${dk}`;
-
-    const cur = map.get(key) ?? { completedCount: 0, skipped: false };
-
-    const reason = String(e.reason ?? "");
-    const delta = Number(e.delta ?? 0);
-
-    if (reason.startsWith("Completed:") && delta > 0) cur.completedCount += 1;
-    if (reason.startsWith("Undo:") && delta < 0)
-      cur.completedCount = Math.max(0, cur.completedCount - 1);
-    if (reason.startsWith("Skipped:")) cur.skipped = true;
-
-    map.set(key, cur);
-  }
-
-  return map;
-}
 
 export default function PlanPage() {
   return (
@@ -71,218 +26,100 @@ export default function PlanPage() {
 }
 
 function PlanInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
+  const { uid, householdId, members, templates, ledger, dataLoading } =
+    useReadyHousehold();
+  const loading = dataLoading;
 
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
-  const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [freq, setFreq] = useState<Freq>("all");
   const [view, setView] = useState<ViewMode>("upcoming");
   const [searchQuery, setSearchQuery] = useState("");
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadProfile() {
-      const p = await getUserProfile(uid);
-      setHouseholdId(p?.householdId ?? null);
-    }
-    loadProfile();
-  }, [uid]);
+  const todayStartMs = useTodayStartMs();
+  const tomorrowStartMs = useMemo(() => {
+    const d = new Date(todayStartMs);
+    d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }, [todayStartMs]);
 
-  async function refresh(hid: string) {
-    setError(null);
-    setLoading(true);
-    try {
-      const [t, e, m] = await Promise.all([
-        listChoreTemplates(hid),
-        listLedgerEntries(hid, 4000),
-        listHouseholdMembers(hid),
-      ]);
-      setTemplates(t);
-      setLedger(e);
-      setMembers(m);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const statusByKey = useMemo(() => buildStatusByOccurrence(ledger), [ledger]);
 
-  useEffect(() => {
-    if (!householdId) return;
-    refresh(householdId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [householdId]);
-
-  function hashStr(s: string) {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return Math.abs(h);
-  }
-
-  function dayIndexFromDayKey(dayKey: string) {
-    const d = new Date(`${dayKey}T12:00:00`);
-    return Math.floor(d.getTime() / 86400000);
-  }
-
-  function getNameByUid(uid: string | undefined) {
-    if (!uid) return null;
-    return members.find((m) => m.uid === uid)?.name ?? null;
-  }
-
-  function getAssigneeForOccurrence(o: Occ) {
-    const mode = String(o.chore?.assigneeMode ?? "anyone");
-
-    if (mode === "fixed") {
-      const name = getNameByUid(o.chore?.fixedAssigneeUid);
-      return name ? `🎯 ${name}` : "🎯 Fixed";
-    }
-
-    if (mode === "rotating") {
-      if (!members.length) return "🔁 Rotating";
-      const idx =
-        (hashStr(o.templateId) + dayIndexFromDayKey(o.dayKey)) % members.length;
-      return `🔁 ${members[idx].name}`;
-    }
-
-    return "👥 Anyone";
-  }
-
-  async function complete(templateId: string, dayKey: string, chore: ChoreTemplate) {
-    if (!householdId) return;
-
-    const key = `${templateId}__${dayKey}`;
+  async function run(key: string, action: () => Promise<void>) {
     setError(null);
     setBusyKey(key);
-
     try {
-      const st = statusByKey.get(key);
-      if (st && st.completedCount > 0) {
-        setError("Already completed for this day.");
-        return;
-      }
-
-      await addLedgerEntry(householdId, {
-        actorUid: uid,
-        delta: chore.points,
-        reason: `Completed: ${chore.title}`,
-        createdAt: Date.now(),
-        templateId,
-        dayKey,
-      });
-
-      const e = await listLedgerEntries(householdId, 4000);
-      setLedger(e);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to complete");
+      await action();
+    } catch (e) {
+      setError(friendlyError(e));
     } finally {
       setBusyKey(null);
     }
   }
 
-  async function skip(templateId: string, dayKey: string, chore: ChoreTemplate) {
-    if (!householdId) return;
-
-    const key = `${templateId}__${dayKey}`;
-    setError(null);
-    setBusyKey(key);
-
-    try {
-      const st = statusByKey.get(key);
-      if (st?.skipped) {
-        setError("Already skipped for this day.");
-        return;
-      }
-
-      await addLedgerEntry(householdId, {
-        actorUid: uid,
-        delta: 0,
-        reason: `Skipped: ${chore.title}`,
-        createdAt: Date.now(),
-        templateId,
-        dayKey,
-      });
-
-      const e = await listLedgerEntries(householdId, 4000);
-      setLedger(e);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to skip");
-    } finally {
-      setBusyKey(null);
-    }
+  function complete(o: Occurrence) {
+    const key = occurrenceKey(o.templateId, o.dayKey);
+    return run(key, () =>
+      recordCompletion({
+        householdId,
+        uid,
+        chore: o.chore,
+        dayKey: o.dayKey,
+        status: statusByKey.get(key),
+      }),
+    );
   }
 
-  const occurrencesAll: Occ[] = useMemo(() => {
-    const now = Date.now();
-    const base = startOfLocalDayMs(now);
-    const raw = buildOccurrences(templates, base, 30) as any[];
+  function skip(o: Occurrence) {
+    const key = occurrenceKey(o.templateId, o.dayKey);
+    return run(key, () =>
+      recordSkip({
+        householdId,
+        uid,
+        chore: o.chore,
+        dayKey: o.dayKey,
+        status: statusByKey.get(key),
+      }),
+    );
+  }
 
-    return raw
-      .map((o) => {
-        const dueMs =
-          typeof o.dueMs === "number"
-            ? o.dueMs
-            : typeof o.ts === "number"
-              ? o.ts
-              : base;
-
-        const dk = typeof o.dayKey === "string" ? o.dayKey : localDayKey(dueMs);
-
-        return {
-          templateId: String(o.templateId),
-          dayKey: dk,
-          dueMs,
-          chore: o.chore as ChoreTemplate,
-        } as Occ;
-      })
-      .sort((a, b) => a.dueMs - b.dueMs);
-  }, [templates]);
-
-  const statusByKey = useMemo(
-    () => buildStatusByOccurrenceLocal(ledger),
-    [ledger],
+  // Next 30 days of active chores, soonest first, without skipped ones
+  const occurrencesAll = useMemo(
+    () =>
+      buildOccurrences(
+        templates.filter((t) => t.active),
+        todayStartMs,
+        30,
+      ).filter(
+        (o) => !statusByKey.get(occurrenceKey(o.templateId, o.dayKey))?.skipped,
+      ),
+    [templates, todayStartMs, statusByKey],
   );
 
-  const byFreq: Occ[] = useMemo(() => {
+  const byFreq = useMemo(() => {
     if (freq === "all") return occurrencesAll;
-
-    const want = freq;
-    return occurrencesAll.filter((o) => {
-      const f = String(o.chore.frequency ?? "").toLowerCase();
-      return f === want;
-    });
+    return occurrencesAll.filter((o) => o.chore.frequency === freq);
   }, [occurrencesAll, freq]);
 
-  const filteredBySearch: Occ[] = useMemo(() => {
-    if (!searchQuery.trim()) return byFreq;
-
-    const query = searchQuery.toLowerCase();
-    return byFreq.filter((o) => {
-      const title = String(o.chore.title ?? "").toLowerCase();
-      return title.includes(query);
-    });
+  const filteredBySearch = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return byFreq;
+    return byFreq.filter((o) => o.chore.title.toLowerCase().includes(query));
   }, [byFreq, searchQuery]);
 
-  const isCompleted = (o: Occ) => {
-    const key = `${o.templateId}__${o.dayKey}`;
-    const st = statusByKey.get(key);
-    if (!st) return false;
-    if (st.skipped) return false;
-    return st.completedCount > 0;
-  };
-
   const upcomingList = useMemo(
-    () => filteredBySearch.filter((o) => !isCompleted(o)),
+    () =>
+      filteredBySearch.filter(
+        (o) => !isOccurrenceDone(statusByKey.get(occurrenceKey(o.templateId, o.dayKey))),
+      ),
     [filteredBySearch, statusByKey],
   );
 
   const completedList = useMemo(
-    () => filteredBySearch.filter((o) => isCompleted(o)),
+    () =>
+      filteredBySearch.filter((o) =>
+        isOccurrenceDone(statusByKey.get(occurrenceKey(o.templateId, o.dayKey))),
+      ),
     [filteredBySearch, statusByKey],
   );
 
@@ -408,12 +245,9 @@ function PlanInner() {
         ) : null}
 
         {visible.map((o) => {
-          const key = `${o.templateId}__${o.dayKey}`;
-          const date = new Date(o.dueMs);
-          const isToday = date.toDateString() === new Date().toDateString();
-          const isTomorrow =
-            date.toDateString() ===
-            new Date(Date.now() + 86400000).toDateString();
+          const key = occurrenceKey(o.templateId, o.dayKey);
+          const isToday = o.dateMs === todayStartMs;
+          const isTomorrow = o.dateMs === tomorrowStartMs;
           const isUpcoming = view === "upcoming";
           const isBusy = busyKey === key;
 
@@ -435,7 +269,7 @@ function PlanInner() {
                         <span>{o.dayKey}</span>
                       </span>
                       <span className="text-gray-300">•</span>
-                      <span>{getAssigneeForOccurrence(o)}</span>
+                      <span>{assigneeLabel(o.chore, o.dayKey, members)}</span>
                     </div>
                   </div>
 
@@ -461,14 +295,14 @@ function PlanInner() {
                   <div className="flex items-center gap-2">
                     <button
                       className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 active:scale-[0.98] transition-all disabled:opacity-60"
-                      onClick={() => complete(o.templateId, o.dayKey, o.chore)}
+                      onClick={() => complete(o)}
                       disabled={isBusy}
                       type="button">
                       {isBusy ? "..." : `✓ Complete (+${o.chore.points})`}
                     </button>
                     <button
                       className="px-4 py-2.5 rounded-xl text-sm font-medium bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
-                      onClick={() => skip(o.templateId, o.dayKey, o.chore)}
+                      onClick={() => skip(o)}
                       disabled={isBusy}
                       type="button">
                       Skip

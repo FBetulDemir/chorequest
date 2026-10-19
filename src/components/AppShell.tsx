@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
+import { useHousehold } from "@/src/components/HouseholdProvider";
 
 const nav = [
   { href: "/today", label: "Today", icon: "🏠" },
@@ -87,16 +87,8 @@ function UserMenu() {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [name, setName] = useState<string>("");
-
-  useEffect(() => {
-    async function load() {
-      if (!user) return;
-      const p = await getUserProfile(user.uid);
-      setName(p?.name ?? "");
-    }
-    load();
-  }, [user]);
+  const { profile } = useHousehold();
+  const name = profile?.name ?? "";
 
   return (
     <div className="min-h-screen pb-24">

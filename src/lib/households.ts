@@ -13,10 +13,11 @@ import type { Household } from "@/src/lib/types";
 import { ensureUserProfile } from "@/src/lib/profile";
 
 function randomCode(len = 6) {
+  // No 0/O or 1/I, so codes are easy to read aloud.
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(len));
   let out = "";
-  for (let i = 0; i < len; i++)
-    out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < len; i++) out += chars[bytes[i] % chars.length];
   return out;
 }
 
@@ -40,12 +41,6 @@ export async function createHousehold(params: {
   email?: string | null;
 }): Promise<Household> {
   const authUid = requireAuthUid();
-  if (params.uid !== authUid) {
-    console.warn("createHousehold: params.uid != auth.uid", {
-      paramsUid: params.uid,
-      authUid,
-    });
-  }
 
   await ensureUserProfile({ uid: authUid, email: params.email ?? null });
 
@@ -58,7 +53,7 @@ export async function createHousehold(params: {
     code: randomCode(6),
     createdAt: now,
     updatedAt: now,
-    members: { [authUid]: true } as any,
+    members: { [authUid]: true },
   };
 
   // Create household
@@ -79,16 +74,6 @@ export async function joinHouseholdByCode(params: {
 }): Promise<Household> {
   const authUid = requireAuthUid();
 
-  if (params.uid !== authUid) {
-    console.warn(
-      "joinHouseholdByCode: params.uid != auth.uid (THIS CAUSES RULE FAILS)",
-      {
-        paramsUid: params.uid,
-        authUid,
-      },
-    );
-  }
-
   const code = params.code.trim().toUpperCase();
 
   const q = query(collection(db, "households"), where("code", "==", code));
@@ -100,38 +85,16 @@ export async function joinHouseholdByCode(params: {
   const now = Date.now();
 
   // 1) Household membership update
-  try {
-    await updateDoc(householdRef(hid), {
-      [`members.${authUid}`]: true,
-      updatedAt: now,
-    });
-    console.log("✅ household membership updated", { hid, authUid });
-  } catch (e: any) {
-    console.error("❌ FAILED household update", {
-      hid,
-      authUid,
-      code: e?.code,
-      message: e?.message,
-    });
-    throw e;
-  }
+  await updateDoc(householdRef(hid), {
+    [`members.${authUid}`]: true,
+    updatedAt: now,
+  });
 
   // 2) User profile householdId update
-  try {
-    await updateDoc(userRef(authUid), {
-      householdId: hid,
-      updatedAt: now,
-    });
-    console.log("✅ user profile householdId updated", { authUid, hid });
-  } catch (e: any) {
-    console.error("❌ FAILED user update", {
-      authUid,
-      hid,
-      code: e?.code,
-      message: e?.message,
-    });
-    throw e;
-  }
+  await updateDoc(userRef(authUid), {
+    householdId: hid,
+    updatedAt: now,
+  });
 
   const updated = await getHousehold(hid);
   if (!updated) throw new Error("Household disappeared after join.");
@@ -143,7 +106,7 @@ export async function getHousehold(hid: string): Promise<Household | null> {
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
 
-  const d = snap.data() as any;
+  const d = snap.data();
   return {
     id: hid,
     name: d.name ?? "Household",

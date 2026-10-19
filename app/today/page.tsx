@@ -1,18 +1,21 @@
 // app/today/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
-import { listChoreTemplates } from "@/src/lib/chores";
-import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
-import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { recordCompletion, recordSkip } from "@/src/lib/points";
+import { buildOccurrences, type Occurrence } from "@/src/lib/schedule";
 import {
-  buildOccurrences,
-  startOfLocalDayMs,
-} from "@/src/lib/schedule";
-import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
+  buildStatusByOccurrence,
+  entryTitle,
+  isOccurrenceOpen,
+  occurrenceKey,
+  survivingCompletions,
+} from "@/src/lib/ledgerHelpers";
+import { assigneeLabel } from "@/src/lib/assignee";
+import { friendlyError } from "@/src/lib/errors";
+import { useTodayStartMs } from "@/src/lib/useToday";
 
 export default function TodayPage() {
   return (
@@ -23,210 +26,92 @@ export default function TodayPage() {
 }
 
 function TodayInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
+  const { uid, householdId, members, templates, ledger, dataLoading } =
+    useReadyHousehold();
 
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<ChoreTemplate[]>([]);
-  const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadProfile() {
-      const p = await getUserProfile(uid);
-      setHouseholdId(p?.householdId ?? null);
-    }
-    loadProfile();
-  }, [uid]);
+  const todayStartMs = useTodayStartMs();
+  const tomorrowStartMs = useMemo(() => {
+    const d = new Date(todayStartMs);
+    d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }, [todayStartMs]);
 
-  async function refresh(hid: string) {
-    setError(null);
-    setLoading(true);
-    try {
-      const [t, e, m] = await Promise.all([
-        listChoreTemplates(hid),
-        listLedgerEntries(hid, 2000),
-        listHouseholdMembers(hid),
-      ]);
-      setTemplates(t);
-      setLedger(e);
-      setMembers(m);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const statusByKey = useMemo(() => buildStatusByOccurrence(ledger), [ledger]);
 
-  useEffect(() => {
-    if (!householdId) return;
-    refresh(householdId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [householdId]);
-
-  function hashStr(s: string) {
-    let h = 0;
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return Math.abs(h);
-  }
-
-  function dayIndexFromDayKey(dayKey: string) {
-    // Use noon to avoid DST edge weirdness.
-    const d = new Date(`${dayKey}T12:00:00`);
-    return Math.floor(d.getTime() / 86400000);
-  }
-
-  function getNameByUid(
-    uid: string | undefined,
-    members: { uid: string; name: string }[],
-  ) {
-    if (!uid) return null;
-    return members.find((m) => m.uid === uid)?.name ?? null;
-  }
-
-  function getAssigneeForOccurrence(
-    o: { templateId: string; dayKey: string; chore: any },
-    members: { uid: string; name: string }[],
-  ) {
-    const mode = String(o.chore?.assigneeMode ?? "anyone");
-
-    if (mode === "fixed") {
-      const name = getNameByUid(o.chore?.fixedAssigneeUid, members);
-      return name ? `🎯 ${name}` : "🎯 Fixed";
-    }
-
-    if (mode === "rotating") {
-      if (!members.length) return "🔁 Rotating";
-      const idx =
-        (hashStr(o.templateId) + dayIndexFromDayKey(o.dayKey)) % members.length;
-      return `🔁 ${members[idx].name}`;
-    }
-
-    return "👥 Anyone";
-  }
-
-  const nowMs = Date.now();
-
-  // (ok to keep even if not used elsewhere; used to compute today window)
-  const todayStartMs = useMemo(() => startOfLocalDayMs(nowMs), [nowMs]);
-  const tomorrowStartMs = useMemo(
-    () => todayStartMs + 24 * 3600 * 1000,
-    [todayStartMs],
-  );
-
-  const entriesCreatedToday = useMemo(
+  // Completions made today that weren't undone, newest first
+  const completedToday = useMemo(
     () =>
-      ledger.filter((x) => {
-        const c = Number(x.createdAt ?? 0);
+      survivingCompletions(ledger).filter((e) => {
+        const c = Number(e.createdAt ?? 0);
         return c >= todayStartMs && c < tomorrowStartMs;
       }),
     [ledger, todayStartMs, tomorrowStartMs],
   );
 
-  const completedToday = useMemo(() => {
-    return entriesCreatedToday.filter(
-      (x) =>
-        String(x.reason ?? "").startsWith("Completed:") && Number(x.delta) > 0,
-    );
-  }, [entriesCreatedToday]);
-
-  const pointsEarned = useMemo(() => {
-    return entriesCreatedToday.reduce((sum, e) => {
-      // Only count points for the current user
-      if (e.actorUid !== uid) return sum;
-      const r = String(e.reason ?? "");
-      if (!r.startsWith("Completed:") && !r.startsWith("Undo:")) return sum;
-      return sum + Number(e.delta ?? 0);
-    }, 0);
-  }, [entriesCreatedToday, uid]);
-
-  // Hide chores that are completed/skipped FOR THEIR dayKey
-  const statusByKey = useMemo(() => {
-    const map = new Map<string, { completed: number; skipped: boolean }>();
-
-    for (const e of ledger) {
-      if (!e.templateId || !e.dayKey) continue;
-      const key = `${e.templateId}__${e.dayKey}`;
-      const cur = map.get(key) ?? { completed: 0, skipped: false };
-
-      const r = String(e.reason ?? "");
-      if (r.startsWith("Completed:") && Number(e.delta ?? 0) > 0)
-        cur.completed += 1;
-      if (r.startsWith("Undo:") && Number(e.delta ?? 0) < 0) cur.completed -= 1;
-      if (r.startsWith("Skipped:")) cur.skipped = true;
-
-      map.set(key, cur);
-    }
-
-    return map;
-  }, [ledger]);
-
-  const occurrences = useMemo(
-    () => buildOccurrences(templates, nowMs, 10),
-    [templates, nowMs],
+  // Only count points for the current user
+  const pointsEarned = useMemo(
+    () =>
+      completedToday
+        .filter((e) => e.actorUid === uid)
+        .reduce((sum, e) => sum + Number(e.delta ?? 0), 0),
+    [completedToday, uid],
   );
 
-  const dueToday = useMemo(() => {
-    return occurrences
-      .filter((o) => o.bucket === "today")
-      .filter((o) => {
-        const key = `${o.templateId}__${o.dayKey}`;
-        const st = statusByKey.get(key);
-        if (!st) return true;
-        if (st.skipped) return false;
-        return st.completed <= 0;
-      });
-  }, [occurrences, statusByKey]);
+  // Paused chores don't show up
+  const activeTemplates = useMemo(
+    () => templates.filter((t) => t.active),
+    [templates],
+  );
 
-  const next3 = useMemo(() => {
-    return occurrences
-      .filter((o) => o.bucket === "next3")
-      .filter((o) => {
-        const key = `${o.templateId}__${o.dayKey}`;
-        const st = statusByKey.get(key);
-        if (!st) return true;
-        if (st.skipped) return false;
-        return st.completed <= 0;
-      });
-  }, [occurrences, statusByKey]);
+  const occurrences = useMemo(
+    () => buildOccurrences(activeTemplates, todayStartMs, 10),
+    [activeTemplates, todayStartMs],
+  );
+
+  // Hide chores that are completed/skipped FOR THEIR dayKey
+  const openOccurrences = useMemo(
+    () =>
+      occurrences.filter((o) =>
+        isOccurrenceOpen(statusByKey.get(occurrenceKey(o.templateId, o.dayKey))),
+      ),
+    [occurrences, statusByKey],
+  );
+
+  const dueToday = useMemo(
+    () => openOccurrences.filter((o) => o.bucket === "today"),
+    [openOccurrences],
+  );
+
+  const next3 = useMemo(
+    () => openOccurrences.filter((o) => o.bucket === "next3"),
+    [openOccurrences],
+  );
 
   // Show all non-daily chores with their next occurrence
   const recurringChores = useMemo(() => {
-    const nonDaily = templates.filter(
-      (t) => t.frequency !== "daily" && t.active,
-    );
+    const nonDaily = activeTemplates.filter((t) => t.frequency !== "daily");
 
     return nonDaily.map((chore) => {
-      // Find the next occurrence for this chore
       const nextOcc = occurrences.find(
         (o) => o.templateId === chore.id && o.bucket !== "today",
       );
 
-      // Check if there's a "today" occurrence
-      const todayOcc = occurrences.find(
+      // If there's an open occurrence today, show that instead
+      const todayOpen = openOccurrences.find(
         (o) => o.templateId === chore.id && o.bucket === "today",
       );
-
-      // If there's a today occurrence and it's not completed, show that instead
-      if (todayOcc) {
-        const key = `${todayOcc.templateId}__${todayOcc.dayKey}`;
-        const st = statusByKey.get(key);
-        const isIncomplete = !st || (!st.skipped && st.completed <= 0);
-
-        if (isIncomplete) {
-          return {
-            chore,
-            nextDue: todayOcc.dayKey,
-            dueStatus: "due-today",
-            occurrence: todayOcc,
-          };
-        }
+      if (todayOpen) {
+        return {
+          chore,
+          nextDue: todayOpen.dayKey,
+          dueStatus: "due-today",
+          occurrence: todayOpen,
+        };
       }
 
-      // Otherwise show the next occurrence
       return {
         chore,
         nextDue: nextOcc?.dayKey ?? "Not scheduled",
@@ -234,89 +119,52 @@ function TodayInner() {
         occurrence: nextOcc,
       };
     });
-  }, [templates, occurrences, statusByKey]);
+  }, [activeTemplates, occurrences, openOccurrences]);
 
-  async function complete(
-    templateId: string,
-    dayKey: string,
-    chore: ChoreTemplate,
-  ) {
-    if (!householdId) return;
-
-    const key = `${templateId}__${dayKey}`;
+  async function run(key: string, action: () => Promise<void>) {
     setError(null);
     setBusyKey(key);
-
     try {
-      const st = statusByKey.get(key);
-      if (st && st.completed > 0) {
-        setError("Already completed for this day.");
-        return;
-      }
-
-      await addLedgerEntry(householdId, {
-        actorUid: uid,
-        delta: chore.points,
-        reason: `Completed: ${chore.title}`,
-        createdAt: Date.now(),
-        templateId,
-        dayKey,
-      });
-
-      const e = await listLedgerEntries(householdId, 2000);
-      setLedger(e);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to complete");
+      await action();
+    } catch (e) {
+      setError(friendlyError(e));
     } finally {
       setBusyKey(null);
     }
   }
 
-  async function skip(
-    templateId: string,
-    dayKey: string,
-    chore: ChoreTemplate,
-  ) {
-    if (!householdId) return;
-
-    const key = `${templateId}__${dayKey}`;
-    setError(null);
-    setBusyKey(key);
-
-    try {
-      const st = statusByKey.get(key);
-      if (st?.skipped) {
-        setError("Already skipped for this day.");
-        return;
-      }
-
-      await addLedgerEntry(householdId, {
-        actorUid: uid,
-        delta: 0,
-        reason: `Skipped: ${chore.title}`,
-        createdAt: Date.now(),
-        templateId,
-        dayKey,
-      });
-
-      const e = await listLedgerEntries(householdId, 2000);
-      setLedger(e);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to skip");
-    } finally {
-      setBusyKey(null);
-    }
+  function complete(o: Occurrence) {
+    const key = occurrenceKey(o.templateId, o.dayKey);
+    return run(key, () =>
+      recordCompletion({
+        householdId,
+        uid,
+        chore: o.chore,
+        dayKey: o.dayKey,
+        status: statusByKey.get(key),
+      }),
+    );
   }
 
-  if (!householdId)
-    return <div className="text-sm text-gray-500">Loading household...</div>;
+  function skip(o: Occurrence) {
+    const key = occurrenceKey(o.templateId, o.dayKey);
+    return run(key, () =>
+      recordSkip({
+        householdId,
+        uid,
+        chore: o.chore,
+        dayKey: o.dayKey,
+        status: statusByKey.get(key),
+      }),
+    );
+  }
 
   return (
     <div className="space-y-5">
       <div className="cq-card p-5">
         <div className="flex items-start justify-between">
           <div>
-            <div className="cq-title">Today's Quest</div>
+            <div className="cq-title">Today’s Quest</div>
             <div className="cq-subtitle">{new Date().toLocaleDateString()}</div>
           </div>
 
@@ -354,22 +202,12 @@ function TodayInner() {
         ) : null}
       </div>
 
-      <Section
-        title="✨ Due Today"
-        right={
-          <button
-            className="cq-btn"
-            onClick={() => refresh(householdId)}
-            disabled={loading}
-            type="button">
-            Refresh
-          </button>
-        }>
-        {loading ? (
+      <Section title="✨ Due Today">
+        {dataLoading ? (
           <div className="text-sm text-gray-500">Loading...</div>
         ) : null}
 
-        {!loading && dueToday.length === 0 ? (
+        {!dataLoading && dueToday.length === 0 ? (
           <div className="cq-card p-8 text-center">
             <div className="text-6xl mb-4">🎉✨</div>
             <div className="text-xl font-bold text-gray-900">All caught up!</div>
@@ -386,11 +224,11 @@ function TodayInner() {
               <OccurrenceCard
                 key={key}
                 title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${getAssigneeForOccurrence(o, members)}`}
+                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${assigneeLabel(o.chore, o.dayKey, members)}`}
                 points={o.chore.points}
                 busy={busyKey === key}
-                onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
-                onSkip={() => skip(o.templateId, o.dayKey, o.chore)}
+                onComplete={() => complete(o)}
+                onSkip={() => skip(o)}
               />
             );
           })}
@@ -409,11 +247,11 @@ function TodayInner() {
               <OccurrenceCard
                 key={key}
                 title={o.chore.title}
-                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${getAssigneeForOccurrence(o, members)}`}
+                subtitle={`${o.dayKey} • ${o.chore.frequency} • ${assigneeLabel(o.chore, o.dayKey, members)}`}
                 points={o.chore.points}
                 busy={busyKey === key}
-                onComplete={() => complete(o.templateId, o.dayKey, o.chore)}
-                onSkip={() => skip(o.templateId, o.dayKey, o.chore)}
+                onComplete={() => complete(o)}
+                onSkip={() => skip(o)}
               />
             );
           })}
@@ -445,28 +283,17 @@ function TodayInner() {
 
             // If due today, allow marking complete
             if (item.occurrence && item.dueStatus === "due-today") {
-              const key = `${item.occurrence.templateId}__${item.occurrence.dayKey}`;
+              const occ = item.occurrence;
+              const key = occurrenceKey(occ.templateId, occ.dayKey);
               return (
                 <OccurrenceCard
                   key={key}
                   title={item.chore.title}
-                  subtitle={`${item.nextDue} • ${item.chore.frequency} • ${getAssigneeForOccurrence(item.occurrence, members)}`}
+                  subtitle={`${item.nextDue} • ${item.chore.frequency} • ${assigneeLabel(occ.chore, occ.dayKey, members)}`}
                   points={item.chore.points}
                   busy={busyKey === key}
-                  onComplete={() =>
-                    complete(
-                      item.occurrence!.templateId,
-                      item.occurrence!.dayKey,
-                      item.occurrence!.chore,
-                    )
-                  }
-                  onSkip={() =>
-                    skip(
-                      item.occurrence!.templateId,
-                      item.occurrence!.dayKey,
-                      item.occurrence!.chore,
-                    )
-                  }
+                  onComplete={() => complete(occ)}
+                  onSkip={() => skip(occ)}
                 />
               );
             }
@@ -486,7 +313,11 @@ function TodayInner() {
                       {dueStatusText} • Next: {item.nextDue} •{" "}
                       {item.chore.frequency} •{" "}
                       {item.occurrence
-                        ? getAssigneeForOccurrence(item.occurrence, members)
+                        ? assigneeLabel(
+                            item.occurrence.chore,
+                            item.occurrence.dayKey,
+                            members,
+                          )
                         : "Not scheduled"}
                     </div>
                   </div>
@@ -523,7 +354,7 @@ function TodayInner() {
                   <div className="text-2xl">✓</div>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-sm truncate">
-                      {String(e.reason ?? "").replace("Completed: ", "")}
+                      {entryTitle(e)}
                     </div>
                     <div className="text-xs text-gray-500 mt-0.5">
                       Completed by {actorName} • {time}
