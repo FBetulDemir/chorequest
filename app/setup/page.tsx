@@ -8,6 +8,7 @@ import { Check, Copy, Link2, Share2, Sparkles } from "lucide-react";
 
 import RequireAuth from "@/src/components/RequireAuth";
 import { useHousehold } from "@/src/components/HouseholdProvider";
+import { useAuth } from "@/src/components/AuthProvider";
 import { useFeedback } from "@/src/components/ui/Feedback";
 import { Button, IconButton } from "@/src/components/ui/Button";
 import { Avatar, Card, Segmented } from "@/src/components/ui/Display";
@@ -95,7 +96,9 @@ function StepHeader({ mood = "happy", title, subtitle }: { mood?: "happy" | "cel
 
 function NameStep({ onDone }: { onDone: (hasHousehold: boolean) => void }) {
   const { uid, profile } = useHousehold();
-  const [name, setName] = useState(profile?.name ?? "");
+  const { user } = useAuth();
+  // Apple / Google sign-in may already have told us the name
+  const [name, setName] = useState(profile?.name || user?.displayName || "");
   const [avatar, setAvatar] = useState<string | null>(profile?.avatar ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -7,6 +7,7 @@ import { ChevronLeft } from "lucide-react";
 import { useAuth } from "@/src/components/AuthProvider";
 import { friendlyError } from "@/src/lib/errors";
 import { Mascot } from "@/src/components/ui/Mascot";
+import { SocialButtons } from "@/src/components/SocialButtons";
 
 type Mode = "login" | "signup" | "reset";
 
@@ -95,7 +96,13 @@ function LoginForm() {
         </h1>
         <p className="mt-1 text-center text-sm text-muted">{copy.subtitle}</p>
 
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        {mode !== "reset" ? (
+          <div className="mt-6">
+            <SocialButtons onSignedIn={() => router.replace(nextPath)} onError={setError} />
+          </div>
+        ) : null}
+
+        <form onSubmit={onSubmit} className={mode === "reset" ? "mt-6 space-y-4" : "mt-4 space-y-4"}>
           <div>
             <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-gray-700">
               Email

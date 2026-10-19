@@ -13,6 +13,10 @@ const config: CapacitorConfig = {
     contentInset: "never",
   },
   plugins: {
+    SocialLogin: {
+      // Only bundle the sign-in providers ChoreQuest offers
+      providers: { google: true, apple: true, facebook: false, twitter: false },
+    },
     PushNotifications: {
       // Show pushes as banners even while the app is open (iOS)
       presentationOptions: ["badge", "sound", "alert"],

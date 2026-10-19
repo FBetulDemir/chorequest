@@ -12,6 +12,10 @@ const MESSAGES: Record<string, string> = {
   "auth/too-many-requests": "Too many attempts. Please wait a moment and try again.",
   "auth/network-request-failed": "Can't reach the server. Check your internet connection.",
   "auth/user-disabled": "This account has been disabled.",
+  "auth/account-exists-with-different-credential":
+    "You already have an account with this email. Sign in with your email and password instead.",
+  "auth/operation-not-allowed": "This sign-in method isn't available yet. Please use your email.",
+  "auth/popup-blocked": "Your browser blocked the sign-in window. Allow pop-ups and try again.",
 
   // Firestore
   "permission-denied": "You don't have permission to do that.",
