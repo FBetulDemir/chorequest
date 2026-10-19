@@ -347,11 +347,21 @@ Code is done. What's left needs your accounts, a Mac or the Firebase console; se
 
 ### Phase 4: Monetization and launch (2–3 weeks)
 
-1. RevenueCat + paywall + household entitlements (§4)
-2. Rewards shop and badges (the main Plus features) (§6.2)
-3. Privacy policy, terms, support page, landing website
-4. Store listing: screenshots, video, keywords, privacy label
-5. TestFlight / Play internal testing with real households → fix → submit
+Code and copy are done. The launch steps that need your accounts are in `docs/STORE_LISTING.md` §7.
+
+- [x] In-app **account deletion** and **leave household**; `cleanupDeletedUser` Cloud Function (§1.2)
+- [x] **Badges** (12 achievements) with progress and new-badge celebrations (§6.2)
+- [x] **Rewards shop**: household rewards, coin wallet, redeem, To deliver (§6.2)
+- [x] **ChoreQuest Plus** (§4):
+  - RevenueCat paywall with restore and auto-renewal terms
+  - household entitlement via the `revenuecatWebhook` Cloud Function
+  - free limits: 2 members, 15 chores
+  - off until `NEXT_PUBLIC_PAYWALL_ENABLED=1`; founding households keep Plus
+- [x] **Privacy Policy, Terms of Use, Support** pages, linked from Profile, sign-up, welcome and paywall
+- [x] **Store listing** copy, screenshot plan, pricing, privacy label and age rating answers, review notes (`docs/STORE_LISTING.md`)
+- [ ] Set support email and legal name; have the legal texts reviewed
+- [ ] Screenshots and preview video (needs the app running with a demo household)
+- [ ] TestFlight / Play internal testing with real households → fix → submit
 
 ### Phase 5: After launch
 
@@ -365,18 +375,18 @@ Code is done. What's left needs your accounts, a Mac or the Firebase console; se
 
 ## 8. Pre-submission checklist
 
-- [ ] Native features present (push, haptics, share, deep links); not just a web view
-- [ ] Account deletion inside the app
-- [ ] Sign in with Apple (if any social login exists)
-- [ ] Privacy policy, terms, support URL live and linked
+- [x] Native features present (push, haptics, share, deep links); not just a web view (code done, needs device testing)
+- [x] Account deletion inside the app
+- [x] Sign in with Apple (if any social login exists) (code done, needs Apple configuration)
+- [x] Privacy policy, terms, support URL live and linked (support email still to set)
 - [ ] App Privacy label filled in App Store Connect
 - [ ] Firestore rules deployed and tested (Firebase emulator tests)
 - [ ] App Check enabled
-- [ ] IAP via StoreKit/RevenueCat, "Restore purchases" button, subscription terms shown on paywall
+- [x] IAP via StoreKit/RevenueCat, "Restore purchases" button, subscription terms shown on paywall (code done, needs store products)
 - [ ] Demo account credentials for the Apple reviewer (a household with sample chores)
-- [ ] No debug logs, no raw error strings, no placeholder text
+- [x] No debug logs, no raw error strings, no placeholder text (except the support email until it's set)
 - [ ] Works offline and with poor network; no infinite "Loading..."
-- [ ] Zoom and Dynamic Type allowed, VoiceOver labels on all buttons
+- [x] Zoom and Dynamic Type allowed, VoiceOver labels on all buttons
 - [ ] Safe areas correct on notched iPhones and iPad (or iPad disabled)
 - [ ] Icons, splash, and screenshots for all required sizes
 - [ ] Crash-free TestFlight run with real users
