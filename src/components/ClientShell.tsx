@@ -5,6 +5,7 @@ import AppShell from "@/src/components/AppShell";
 import { HouseholdProvider } from "@/src/components/HouseholdProvider";
 import { NativeShell } from "@/src/components/NativeShell";
 import { RouteTracker } from "@/src/components/RouteTracker";
+import { BadgeWatcher } from "@/src/components/BadgeWatcher";
 import { ServiceWorkerRegistration } from "@/src/components/ServiceWorkerRegistration";
 import { FeedbackProvider } from "@/src/components/ui/Feedback";
 
@@ -19,6 +20,7 @@ export default function ClientShell({
         <ServiceWorkerRegistration />
         <NativeShell />
         <RouteTracker />
+        <BadgeWatcher />
         <AppShell>{children}</AppShell>
       </FeedbackProvider>
     </HouseholdProvider>

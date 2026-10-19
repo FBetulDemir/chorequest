@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import clsx from "clsx";
 import { BarChart3, Bell, BellRing, CalendarRange, History, House, KeyRound, LogOut, Monitor, Moon, Sun, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ import { isNative } from "@/src/lib/native";
 import { analyticsAvailable, hasAnalyticsConsent, setAnalyticsConsent } from "@/src/lib/analytics";
 import { deleteAccount, isOnlyMember, signInMethod } from "@/src/lib/account";
 import { isCancelled } from "@/src/lib/socialAuth";
+import { badgesFor } from "@/src/lib/badges";
 
 export default function ProfilePage() {
   return (
@@ -76,6 +77,8 @@ function ProfileInner() {
           Edit profile
         </Button>
       </Card>
+
+      <BadgesSection />
 
       {/* Appearance */}
       <section className="space-y-3">
@@ -453,5 +456,46 @@ function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
         {error ? <p role="alert" className="text-red-600">{error}</p> : null}
       </div>
     </Sheet>
+  );
+}
+
+function BadgesSection() {
+  const { uid, ledger } = useReadyHousehold();
+  const badges = useMemo(() => badgesFor(ledger, uid), [ledger, uid]);
+  const earnedCount = badges.filter((b) => b.earned).length;
+
+  return (
+    <section className="space-y-3" aria-labelledby="badges-heading">
+      <SectionTitle right={<span className="text-xs font-bold text-muted">{earnedCount} of {badges.length}</span>}>
+        <span id="badges-heading">Badges</span>
+      </SectionTitle>
+      <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+        {badges.map((b) => (
+          <div
+            key={b.id}
+            className={clsx("cq-card flex flex-col items-center p-3 text-center", !b.earned && "bg-surface-2 shadow-none")}
+            title={b.description}>
+            <span className={clsx("text-3xl", !b.earned && "opacity-35 grayscale")} aria-hidden="true">
+              {b.emoji}
+            </span>
+            <span className={clsx("mt-1.5 text-[11px] font-extrabold leading-tight", b.earned ? "text-ink" : "text-muted")}>
+              {b.title}
+            </span>
+            {b.earned ? (
+              <span className="sr-only">Earned</span>
+            ) : (
+              <div className="mt-2 w-full" aria-label={`${b.progress} of ${b.target}`}>
+                <div className="h-1.5 overflow-hidden rounded-full bg-gray-200">
+                  <div className="h-full rounded-full bg-brand" style={{ width: `${(b.progress / b.target) * 100}%` }} />
+                </div>
+                <div className="mt-1 text-[10px] font-bold text-faint">
+                  {b.progress}/{b.target}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
