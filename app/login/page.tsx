@@ -172,6 +172,20 @@ function LoginForm() {
           <button className="cq-btn-primary w-full py-3" disabled={busy} type="submit">
             {busy ? "Please wait…" : copy.submit}
           </button>
+
+          {mode === "signup" ? (
+            <p className="text-center text-xs text-muted">
+              By creating an account you agree to our{" "}
+              <Link href="/terms" className="font-semibold underline">
+                Terms
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="font-semibold underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          ) : null}
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-500">

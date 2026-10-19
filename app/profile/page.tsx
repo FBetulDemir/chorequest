@@ -25,7 +25,7 @@ import { isCancelled } from "@/src/lib/socialAuth";
 import { badgesFor } from "@/src/lib/badges";
 import { usePlan } from "@/src/components/Plus";
 import { PAYWALL_ENABLED } from "@/src/lib/plan";
-import { Sparkles } from "lucide-react";
+import { FileText, LifeBuoy, Shield, Sparkles } from "lucide-react";
 
 export default function ProfilePage() {
   return (
@@ -137,7 +137,17 @@ function ProfileInner() {
         </Card>
       </section>
 
-      <p className="pb-4 text-center text-xs text-faint">ChoreQuest 0.2 · Made with 💜</p>
+      {/* About */}
+      <section className="space-y-3">
+        <SectionTitle>About</SectionTitle>
+        <Card className="divide-y divide-line overflow-hidden">
+          <ListRow href="/support" icon={<LifeBuoy size={18} />} title="Help & support" />
+          <ListRow href="/privacy" icon={<Shield size={18} />} title="Privacy Policy" />
+          <ListRow href="/terms" icon={<FileText size={18} />} title="Terms of Use" />
+        </Card>
+      </section>
+
+      <p className="pb-4 text-center text-xs text-faint">ChoreQuest 0.3 · Made with 💜</p>
 
       {deleting ? <DeleteAccountSheet onClose={() => setDeleting(false)} /> : null}
 
