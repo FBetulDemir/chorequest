@@ -1,0 +1,130 @@
+rules_version = '2';
+
+// ChoreQuest Firestore security rules. DRAFT, NOT DEPLOYED YET.
+//
+// These are written to work with both the current code and the version that is
+// already deployed on Vercel, so existing accounts and data keep working.
+//
+// Before deploying:
+//   1. Copy your current rules from the Firebase console (Firestore → Rules) as a backup.
+//   2. Test with the emulator:  npx firebase emulators:start --only firestore
+//   3. Deploy:                  npx firebase deploy --only firestore:rules --project chore-quest-22419
+//
+// Known gap (roadmap §2.2): joining by code needs every signed-in user to be able to
+// list households. It will be closed by moving invite codes to their own collection.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function me() {
+      return request.auth.uid;
+    }
+
+    function householdDoc(hid) {
+      return get(/databases/$(database)/documents/households/$(hid));
+    }
+
+    function isMemberOf(householdData) {
+      return signedIn() && householdData.get('members', {}).get(me(), false) == true;
+    }
+
+    function isMember(hid) {
+      return isMemberOf(householdDoc(hid).data);
+    }
+
+    function myHouseholdId() {
+      return get(/databases/$(database)/documents/users/$(me())).data.get('householdId', null);
+    }
+
+    // ---------- Users ----------
+    match /users/{uid} {
+      // Your own profile, or profiles of people in your household (for names)
+      allow read: if signedIn() && (
+        uid == me() ||
+        (resource.data.get('householdId', null) != null
+          && resource.data.get('householdId', null) == myHouseholdId())
+      );
+
+      allow create: if signedIn()
+        && uid == me()
+        && request.resource.data.uid == me()
+        && request.resource.data.householdId == null;
+
+      // You can only point your profile at a household you are a member of (or none)
+      allow update: if signedIn()
+        && uid == me()
+        && request.resource.data.get('uid', null) == resource.data.get('uid', null)
+        && (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['householdId'])
+          || request.resource.data.householdId == null
+          || isMember(request.resource.data.householdId)
+        );
+
+      allow delete: if signedIn() && uid == me();
+    }
+
+    // ---------- Households ----------
+    match /households/{hid} {
+      allow get: if isMemberOf(resource.data);
+
+      // Needed by "join by code" (see known gap above)
+      allow list: if signedIn();
+
+      // The creator must be the only member
+      allow create: if signedIn()
+        && request.resource.data.members.keys().hasOnly([me()])
+        && request.resource.data.members[me()] == true;
+
+      allow update: if signedIn() && (
+        // Members can edit household details; membership changes only for themselves
+        (
+          isMemberOf(resource.data)
+          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([me()])
+        )
+        ||
+        // Joining: a non-member may add only themselves
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt'])
+          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([me()])
+          && request.resource.data.members[me()] == true
+        )
+      );
+
+      allow delete: if false;
+
+      // ---------- Chore templates ----------
+      match /choreTemplates/{templateId} {
+        function validChore(d) {
+          return d.title is string && d.title.size() > 0 && d.title.size() <= 120
+            && d.points is number && d.points >= 0 && d.points <= 100
+            && d.frequency in ['daily', 'weekly', 'monthly', 'seasonal']
+            && d.assigneeMode in ['anyone', 'fixed', 'rotating'];
+        }
+
+        allow read: if isMember(hid);
+        allow create, update: if isMember(hid) && validChore(request.resource.data);
+        allow delete: if isMember(hid);
+      }
+
+      // ---------- Points ledger (append-only) ----------
+      match /ledger/{entryId} {
+        allow read: if isMember(hid);
+
+        // You can only record points for yourself, within a sane range
+        allow create: if isMember(hid)
+          && request.resource.data.actorUid == me()
+          && request.resource.data.delta is number
+          && math.abs(request.resource.data.delta) <= 100
+          && request.resource.data.reason is string
+          && request.resource.data.createdAt is number;
+
+        // History can't be rewritten; corrections are new "undo" entries
+        allow update, delete: if false;
+      }
+    }
+  }
+}

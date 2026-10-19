@@ -62,8 +62,8 @@ function normalizeFreq(
   return "weekly";
 }
 
-function templateIdOf(t: any): string {
-  return String(t?.id ?? t?.templateId ?? "");
+function templateIdOf(t: ChoreTemplate): string {
+  return String(t?.id ?? "");
 }
 
 function bucketForIndex(i: number): OccurrenceBucket {
@@ -84,7 +84,7 @@ export function buildOccurrences(
     const tid = templateIdOf(t);
     if (!tid) continue;
 
-    const freq = normalizeFreq((t as any).frequency);
+    const freq = normalizeFreq(t.frequency);
 
     if (freq === "daily") {
       for (let i = 0; i <= horizonDays; i++) {

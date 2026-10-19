@@ -1,14 +1,21 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import type { User } from "firebase/auth";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
 
-import { auth, db } from "@/src/lib/firebase";
-import type { UserProfile } from "@/src/lib/types";
-import type { Household } from "@/src/lib/types";
+import { useHousehold } from "@/src/components/HouseholdProvider";
+
+function needsSetup(profile: { name: string; householdId: string | null } | null) {
+  return !profile || !profile.householdId || !profile.name?.trim();
+}
+
+function CenteredMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-[50vh] grid place-items-center p-6 text-center">
+      <div>{children}</div>
+    </div>
+  );
+}
 
 export default function RequireAuth({
   children,
@@ -17,163 +24,49 @@ export default function RequireAuth({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { uid, profile, household, loading, error } = useHousehold();
 
-  const [user, setUser] = useState<User | null>(null);
+  const onSetup = pathname === "/setup";
+  const setupIncomplete = needsSetup(profile) || (!!profile?.householdId && !household);
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [household, setHousehold] = useState<Household | null>(null);
-
-  const [authLoading, setAuthLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [householdLoading, setHouseholdLoading] = useState(true);
-
-  const [error, setError] = useState<string>("");
-
-  // 1) Auth
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setAuthLoading(false);
-    });
-    return () => unsub();
-  }, []);
-
-  // 2) Profile subscription (self-read)
-  useEffect(() => {
-    setError("");
-    setProfile(null);
-
-    if (!user) {
-      setProfileLoading(false);
-      return;
-    }
-
-    setProfileLoading(true);
-
-    const ref = doc(db, "users", user.uid);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          // If profile doc doesn't exist, your setup flow should create it.
-          // But we stop "loading forever" and show a useful error.
-          setProfile(null);
-          setError(`Missing user profile doc: users/${user.uid}`);
-        } else {
-          const d = snap.data() as any;
-          setProfile({
-            uid: user.uid,
-            email: d.email ?? user.email ?? null,
-            name: d.name ?? "",
-            householdId: d.householdId ?? null,
-            createdAt: Number(d.createdAt ?? Date.now()),
-            updatedAt: Number(d.updatedAt ?? Date.now()),
-          });
-        }
-        setProfileLoading(false);
-      },
-      (err) => {
-        setError(err.message || "Failed to read user profile.");
-        setProfileLoading(false);
-      },
-    );
-
-    return () => unsub();
-  }, [user?.uid]);
-
-  // 3) Household subscription (ONLY if householdId exists)
-  useEffect(() => {
-    setError((e) => e); // keep existing error
-    setHousehold(null);
-
-    // If we don't have a profile yet, we're not ready to decide.
-    if (!profile) {
-      setHouseholdLoading(false);
-      return;
-    }
-
-    //  if householdId is null, we MUST NOT stay "loading".
-    if (!profile.householdId) {
-      setHousehold(null);
-      setHouseholdLoading(false);
-      return;
-    }
-
-    setHouseholdLoading(true);
-
-    const ref = doc(db, "households", profile.householdId);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (!snap.exists()) {
-          setHousehold(null);
-          setError(`Household not found: households/${profile.householdId}`);
-        } else {
-          const d = snap.data() as any;
-          setHousehold({
-            id: snap.id,
-            name: d.name ?? "Household",
-            code: d.code ?? "",
-            members: d.members ?? {},
-            createdAt: Number(d.createdAt ?? Date.now()),
-            updatedAt: Number(d.updatedAt ?? Date.now()),
-          });
-        }
-        setHouseholdLoading(false);
-      },
-      (err) => {
-        setError(err.message || "Failed to read household.");
-        setHouseholdLoading(false);
-      },
-    );
-
-    return () => unsub();
-  }, [profile?.householdId]);
-
-  const loading = useMemo(
-    () => authLoading || profileLoading || householdLoading,
-    [authLoading, profileLoading, householdLoading],
-  );
-
-  // Redirect logic (in effects, not during render)
+  // Redirects happen in an effect, never during render.
   useEffect(() => {
     if (loading) return;
-
-    if (!user) {
-      router.replace("/login");
+    if (!uid) {
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
       return;
     }
+    if (!error && setupIncomplete && !onSetup) router.replace("/setup");
+  }, [loading, uid, error, setupIncomplete, onSetup, pathname, router]);
 
-    //  Allow /setup with no household or no name
-    if (profile && (!profile.householdId || !profile.name?.trim()) && pathname !== "/setup") {
-      router.replace("/setup");
-      return;
-    }
-  }, [loading, user, profile, pathname, router]);
-
-  if (loading) return <p style={{ padding: 24 }}>Loading...</p>;
-
-  if (error) {
+  if (loading) {
     return (
-      <div style={{ padding: 24 }}>
-        <p style={{ fontWeight: 600 }}>Something went wrong</p>
-        <pre style={{ whiteSpace: "pre-wrap", opacity: 0.85 }}>{error}</pre>
-      </div>
+      <CenteredMessage>
+        <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-purple-200 border-t-purple-600" />
+        <p className="mt-3 text-sm text-gray-500">Loading your household…</p>
+      </CenteredMessage>
     );
   }
 
-  // If logged out, redirect effect will run; show a small placeholder.
-  if (!user) return <p style={{ padding: 24 }}>Redirecting…</p>;
-
-  // - If no householdId or no name AND we're on /setup -> render children (setup page can show name + join form)
-  // - If household exists and name is set -> render children
-  if (profile && (!profile.householdId || !profile.name?.trim()) && pathname === "/setup") {
-    return <>{children}</>;
+  // The setup page handles a missing household itself.
+  if (error && !onSetup) {
+    return (
+      <CenteredMessage>
+        <div className="text-4xl">😕</div>
+        <p className="mt-2 font-semibold text-gray-900">Something went wrong</p>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
+        <button className="cq-btn mt-4" type="button" onClick={() => window.location.reload()}>
+          Try again
+        </button>
+      </CenteredMessage>
+    );
   }
 
-  // For all other routes, require household and name.
-  if (profile && (!profile.householdId || !profile.name?.trim()))
-    return <p style={{ padding: 24 }}>Redirecting…</p>;
+  if (!uid) return <CenteredMessage><p className="text-sm text-gray-500">Redirecting…</p></CenteredMessage>;
+
+  if (onSetup) return <>{children}</>;
+
+  if (setupIncomplete) return <CenteredMessage><p className="text-sm text-gray-500">Redirecting…</p></CenteredMessage>;
 
   return <>{children}</>;
 }

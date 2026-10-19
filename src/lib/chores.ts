@@ -4,10 +4,12 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   setDoc,
   updateDoc,
+  type DocumentData,
 } from "firebase/firestore";
 import type { ChoreTemplate, ChoreTemplateInput } from "./types";
 
@@ -15,31 +17,44 @@ function choresCol(householdId: string) {
   return collection(db, "households", householdId, "choreTemplates");
 }
 
+function toChoreTemplate(id: string, data: DocumentData): ChoreTemplate {
+  return {
+    id,
+    title: data.title ?? "",
+    points: Number(data.points ?? 0),
+    frequency: data.frequency ?? "weekly",
+    assigneeMode: data.assigneeMode ?? "anyone",
+    fixedAssigneeUid: data.fixedAssigneeUid,
+    active: Boolean(data.active ?? true),
+
+    // keep schedule always present
+    schedule: data.schedule ?? {},
+
+    createdAt: Number(data.createdAt ?? Date.now()),
+    updatedAt: Number(data.updatedAt ?? Date.now()),
+  };
+}
+
 export async function listChoreTemplates(
   householdId: string,
 ): Promise<ChoreTemplate[]> {
   const q = query(choresCol(householdId), orderBy("updatedAt", "desc"));
   const snap = await getDocs(q);
+  return snap.docs.map((d) => toChoreTemplate(d.id, d.data()));
+}
 
-  return snap.docs.map((d) => {
-    const data = d.data() as any;
-
-    return {
-      id: d.id,
-      title: data.title ?? "",
-      points: Number(data.points ?? 0),
-      frequency: data.frequency ?? "weekly",
-      assigneeMode: data.assigneeMode ?? "anyone",
-      fixedAssigneeUid: data.fixedAssigneeUid,
-      active: Boolean(data.active ?? true),
-
-      // keep schedule always present
-      schedule: data.schedule ?? {},
-
-      createdAt: Number(data.createdAt ?? Date.now()),
-      updatedAt: Number(data.updatedAt ?? Date.now()),
-    } as ChoreTemplate;
-  });
+/** Live chore templates, most recently updated first. Returns the unsubscribe function. */
+export function subscribeChoreTemplates(
+  householdId: string,
+  onData: (templates: ChoreTemplate[]) => void,
+  onError: (err: Error) => void,
+): () => void {
+  const q = query(choresCol(householdId), orderBy("updatedAt", "desc"));
+  return onSnapshot(
+    q,
+    (snap) => onData(snap.docs.map((d) => toChoreTemplate(d.id, d.data()))),
+    onError,
+  );
 }
 
 export async function createChoreTemplate(
@@ -51,7 +66,7 @@ export async function createChoreTemplate(
 
   await setDoc(ref, {
     ...input,
-    schedule: (input as any).schedule ?? {}, // safe default
+    schedule: input.schedule ?? {}, // safe default
     createdAt: now,
     updatedAt: now,
   });
@@ -68,7 +83,6 @@ export async function updateChoreTemplate(
 
   await updateDoc(ref, {
     ...patch,
-    ...((patch as any).schedule ? { schedule: (patch as any).schedule } : {}),
     updatedAt: Date.now(),
   });
 }

@@ -1,11 +1,17 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
-import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
-import { addLedgerEntry, listLedgerEntries } from "@/src/lib/points";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { recordUndo } from "@/src/lib/points";
+import {
+  buildStatusByOccurrence,
+  entryKind,
+  entryOccurrenceKey,
+  entryTitle,
+  findUndoneCompletionIds,
+} from "@/src/lib/ledgerHelpers";
+import { friendlyError } from "@/src/lib/errors";
 import type { PointsLedgerEntry } from "@/src/lib/types";
 
 export default function HistoryPage() {
@@ -17,90 +23,41 @@ export default function HistoryPage() {
 }
 
 function HistoryInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
+  const { uid, householdId, members, ledger, dataLoading } = useReadyHousehold();
+  const loading = dataLoading;
 
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [items, setItems] = useState<PointsLedgerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function boot() {
-      const p = await getUserProfile(uid);
-      const hid = p?.householdId ?? null;
-      setHouseholdId(hid);
-      if (hid) {
-        const mem = await listHouseholdMembers(hid);
-        setMembers(mem);
-      }
-    }
-    boot();
-  }, [uid]);
-
-  async function refresh(hid: string) {
-    setLoading(true);
-    setError(null);
-    try {
-      const e = await listLedgerEntries(hid, 1000);
-      setItems(e);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load history");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!householdId) return;
-    refresh(householdId);
-  }, [householdId]);
 
   const nameOf = (u: string) =>
     members.find((m) => m.uid === u)?.name ?? "Member";
 
-  const rows = useMemo(() => {
-    // show only meaningful stuff in UI
-    return items.filter((x) => {
-      const r = String(x.reason ?? "");
-      return (
-        r.startsWith("Completed:") ||
-        r.startsWith("Skipped:") ||
-        r.startsWith("Undo:")
-      );
-    });
-  }, [items]);
+  // show only meaningful stuff in UI
+  const rows = useMemo(
+    () => ledger.filter((x) => entryKind(x) !== "other"),
+    [ledger],
+  );
+
+  const undoneIds = useMemo(() => findUndoneCompletionIds(ledger), [ledger]);
+  const statusByKey = useMemo(() => buildStatusByOccurrence(ledger), [ledger]);
 
   async function undo(e: PointsLedgerEntry) {
-    if (!householdId) return;
-    if (!e.templateId || !e.dayKey) return;
-    if (!String(e.reason ?? "").startsWith("Completed:")) return;
-
+    const key = entryOccurrenceKey(e);
     setBusyId(e.id);
     setError(null);
-
     try {
-      await addLedgerEntry(householdId, {
-        actorUid: uid,
-        delta: -Math.abs(Number(e.delta ?? 0)),
-        reason: `Undo: ${String(e.reason ?? "").replace("Completed: ", "")}`,
-        createdAt: Date.now(),
-        templateId: e.templateId,
-        dayKey: e.dayKey,
+      await recordUndo({
+        householdId,
+        uid,
+        completion: e,
+        status: key ? statusByKey.get(key) : undefined,
       });
-
-      await refresh(householdId);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to undo");
+    } catch (err) {
+      setError(friendlyError(err, "Couldn't undo. Please try again."));
     } finally {
       setBusyId(null);
     }
   }
-
-  if (!householdId)
-    return <div className="text-sm text-gray-500">Loading household…</div>;
 
   return (
     <div className="space-y-5">
@@ -113,26 +70,20 @@ function HistoryInner() {
           ) : null}
         </div>
 
-        <button
-          className="cq-btn"
-          onClick={() => refresh(householdId)}
-          disabled={loading}>
-          Refresh
-        </button>
       </div>
 
       {loading ? <div className="text-sm text-gray-500">Loading…</div> : null}
 
       <div className="space-y-3">
         {rows.map((e) => {
-          const reason = String(e.reason ?? "");
+          const kind = entryKind(e);
           const who = nameOf(String(e.actorUid ?? ""));
           const ts = Number(e.createdAt ?? 0);
           const when = ts ? new Date(ts).toLocaleString() : "";
 
-          const isCompleted = reason.startsWith("Completed:");
-          const isSkipped = reason.startsWith("Skipped:");
-          const isUndo = reason.startsWith("Undo:");
+          const isCompleted = kind === "complete";
+          const isSkipped = kind === "skip";
+          const wasUndone = isCompleted && undoneIds.has(e.id);
 
           const icon = isCompleted ? "✓" : isSkipped ? "⏭️" : "↩️";
           const badgeColor = isCompleted
@@ -151,10 +102,7 @@ function HistoryInner() {
 
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-base truncate">
-                      {reason
-                        .replace("Completed: ", "")
-                        .replace("Skipped: ", "")
-                        .replace("Undo: ", "")}
+{entryTitle(e)}
                     </div>
 
                     <div className="mt-1 text-xs text-gray-500">
@@ -173,6 +121,11 @@ function HistoryInner() {
                             ? "Skipped"
                             : "Undone"}
                       </span>
+                      {wasUndone ? (
+                        <span className="ml-2 text-xs text-gray-400">
+                          (undone later)
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -193,7 +146,7 @@ function HistoryInner() {
                     </div>
                   ) : null}
 
-                  {isCompleted ? (
+                  {isCompleted && !wasUndone && e.templateId && e.dayKey ? (
                     <button
                       className="cq-btn"
                       type="button"

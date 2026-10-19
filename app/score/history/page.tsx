@@ -1,14 +1,11 @@
 // app/score/history/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
-import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
-import { listLedgerEntries } from "@/src/lib/points";
-import type { PointsLedgerEntry } from "@/src/lib/types";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
+import { scoresByMonth } from "@/src/lib/scoring";
 
 type MemberTotal = {
   uid: string;
@@ -39,118 +36,41 @@ export default function ScoreHistoryPage() {
 }
 
 function ScoreHistoryInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
-
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-  const [ledger, setLedger] = useState<PointsLedgerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [openMonth, setOpenMonth] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function boot() {
-      const p = await getUserProfile(uid);
-      const hid = p?.householdId ?? null;
-      setHouseholdId(hid);
-      if (hid) {
-        const mem = await listHouseholdMembers(hid);
-        setMembers(mem);
-      }
-    }
-    boot();
-  }, [uid]);
-
-  useEffect(() => {
-    if (!householdId) return;
-
-    async function load(hid: string) {
-      setLoading(true);
-      setError(null);
-      try {
-        const e = await listLedgerEntries(hid, 10000);
-        setLedger(e);
-      } catch (e: any) {
-        setError(e?.message ?? "Failed to load score history");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load(householdId);
-  }, [householdId]);
-
-  const nameOf = (u: string) =>
-    members.find((m) => m.uid === u)?.name ?? "Member";
+  const { uid, members, ledger, dataLoading, error } = useReadyHousehold();
+  const loading = dataLoading;
+  // null = newest month open by default; "" = all collapsed
+  const [openChoice, setOpenChoice] = useState<string | null>(null);
 
   const months = useMemo<MonthGroup[]>(() => {
-    // Include both completions (+points) and undos (-points) so totals net out correctly
-    const scoreEvents = ledger.filter((e) => {
-      const reason = String(e.reason ?? "");
-      const delta = Number(e.delta ?? 0);
-      return (
-        (reason.startsWith("Completed:") && delta > 0) ||
-        (reason.startsWith("Undo:") && delta < 0)
-      );
-    });
+    const nameOf = (u: string) =>
+      members.find((m) => m.uid === u)?.name ?? "Member";
 
-    const byMonth = new Map<string, Map<string, MemberTotal>>();
-
-    for (const e of scoreEvents) {
-      const t = Number(e.createdAt ?? 0);
-      if (!t) continue;
-      const isUndo = String(e.reason ?? "").startsWith("Undo:");
-      const d = new Date(t);
-      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-
-      const byUid = byMonth.get(monthKey) ?? new Map<string, MemberTotal>();
-      const who = String(e.actorUid ?? "");
-      const cur = byUid.get(who) ?? {
-        uid: who,
-        name: nameOf(who),
-        points: 0,
-        chores: 0,
+    return scoresByMonth(ledger).map((m) => {
+      const [y, mo] = m.key.split("-").map(Number);
+      return {
+        key: m.key,
+        label: `${MONTH_LABELS[mo - 1]} ${y}`,
+        totalPoints: m.totalPoints,
+        totalChores: m.totalChores,
+        members: m.members.map((x) => ({
+          uid: x.uid,
+          name: nameOf(x.uid),
+          points: x.points,
+          chores: x.chores,
+        })),
       };
-      cur.points += Number(e.delta ?? 0);
-      cur.chores = isUndo ? Math.max(0, cur.chores - 1) : cur.chores + 1;
-      byUid.set(who, cur);
-      byMonth.set(monthKey, byUid);
-    }
-
-    const groups: MonthGroup[] = [];
-    for (const [key, byUid] of byMonth.entries()) {
-      const [y, m] = key.split("-").map(Number);
-      const memberTotals = Array.from(byUid.values()).sort(
-        (a, b) => b.points - a.points,
-      );
-      groups.push({
-        key,
-        label: `${MONTH_LABELS[m - 1]} ${y}`,
-        totalPoints: memberTotals.reduce((s, r) => s + r.points, 0),
-        totalChores: memberTotals.reduce((s, r) => s + r.chores, 0),
-        members: memberTotals,
-      });
-    }
-
-    groups.sort((a, b) => (a.key < b.key ? 1 : -1));
-    return groups;
+    });
   }, [ledger, members]);
 
-  useEffect(() => {
-    if (months.length > 0 && openMonth === null) {
-      setOpenMonth(months[0].key);
-    }
-  }, [months, openMonth]);
-
-  if (!householdId) return <div className="p-6">Loading…</div>;
+  const openMonth = openChoice ?? months[0]?.key ?? null;
+  const setOpenMonth = (key: string | null) => setOpenChoice(key ?? "");
 
   return (
     <div className="space-y-6">
       <div className="cq-card p-5 flex items-start justify-between">
         <div>
           <div className="cq-title">Monthly Score History</div>
-          <div className="cq-subtitle">Every month's leaderboard, all in one place</div>
+          <div className="cq-subtitle">Every month’s leaderboard, all in one place</div>
           {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : null}
         </div>
 

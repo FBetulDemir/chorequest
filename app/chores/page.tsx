@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import RequireAuth from "@/src/components/RequireAuth";
-import { useAuth } from "@/src/components/AuthProvider";
-import { getUserProfile } from "@/src/lib/profile";
+import { useReadyHousehold } from "@/src/components/HouseholdProvider";
 import {
   createChoreTemplate,
   deleteChoreTemplate,
-  listChoreTemplates,
   updateChoreTemplate,
 } from "@/src/lib/chores";
-import { listHouseholdMembers, type HouseholdMember } from "@/src/lib/members";
-import type { AssigneeMode, ChoreTemplate, Frequency } from "@/src/lib/types";
+import { friendlyError } from "@/src/lib/errors";
+import type {
+  AssigneeMode,
+  ChoreTemplate,
+  ChoreTemplateInput,
+  Frequency,
+} from "@/src/lib/types";
 
 const freqOrder: Frequency[] = ["daily", "weekly", "monthly", "seasonal"];
 const freqLabel: Record<Frequency, string> = {
@@ -141,14 +144,14 @@ export default function ChoresPage() {
 }
 
 function ChoresInner() {
-  const { user } = useAuth();
-  const uid = user!.uid;
+  const {
+    uid,
+    householdId,
+    members,
+    templates: items,
+    dataLoading: loading,
+  } = useReadyHousehold();
 
-  const [householdId, setHouseholdId] = useState<string | null>(null);
-  const [members, setMembers] = useState<HouseholdMember[]>([]);
-
-  const [items, setItems] = useState<ChoreTemplate[]>([]);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,48 +168,7 @@ function ChoresInner() {
   const [points, setPoints] = useState<number>(30);
   const [frequency, setFrequency] = useState<Frequency>("weekly");
   const [assigneeMode, setAssigneeMode] = useState<AssigneeMode>("anyone");
-  const [fixedUid, setFixedUid] = useState<string>("");
-
-  useEffect(() => {
-    async function load() {
-      const p = await getUserProfile(uid);
-      const hid = p?.householdId ?? null;
-      setHouseholdId(hid);
-
-      if (hid) {
-        const mem = await listHouseholdMembers(hid);
-        setMembers(mem);
-        // Set default to current user if they're in members, otherwise first member
-        const defaultMember = mem.find((m) => m.uid === uid) ?? mem[0];
-        setFixedUid(defaultMember?.uid ?? "");
-      }
-    }
-    load();
-  }, [uid]);
-
-  async function refresh(hid: string) {
-    setError(null);
-    setLoading(true);
-    try {
-      // Load both chores and members to ensure member names are available
-      const [data, mem] = await Promise.all([
-        listChoreTemplates(hid),
-        listHouseholdMembers(hid),
-      ]);
-      setItems(data);
-      setMembers(mem);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load chores");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!householdId) return;
-    refresh(householdId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [householdId]);
+  const [fixedUid, setFixedUid] = useState<string>(uid);
 
   const grouped = useMemo(() => {
     const map: Record<string, ChoreTemplate[]> = {
@@ -242,11 +204,11 @@ function ChoresInner() {
     setPoints(30);
     setFrequency("weekly");
     setAssigneeMode("anyone");
+    setFixedUid(uid);
     setOpen(true);
   }
 
   async function saveChore() {
-    if (!householdId) return;
     if (!title.trim()) return;
 
     setBusy(editingChore?.id ?? "create");
@@ -270,7 +232,7 @@ function ChoresInner() {
         }
       }
 
-      const choreData = {
+      const choreData: ChoreTemplateInput = {
         title: `${icon} ${title.trim()}`,
         points,
         frequency,
@@ -278,7 +240,7 @@ function ChoresInner() {
         active: true,
         ...(assigneeMode === "fixed" ? { fixedAssigneeUid: validFixedUid } : {}),
         schedule: {},
-      } as any;
+      };
 
       if (editingChore) {
         // Update existing chore
@@ -292,7 +254,6 @@ function ChoresInner() {
         );
       }
 
-      await refresh(householdId);
       window.setTimeout(() => setToast(null), 2200);
 
       // reset + close
@@ -302,8 +263,8 @@ function ChoresInner() {
       setPoints(30);
       setFrequency("weekly");
       setAssigneeMode("anyone");
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to save chore (check Firestore rules)");
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't save the chore. Please try again."));
     } finally {
       setBusy(null);
     }
@@ -326,7 +287,6 @@ function ChoresInner() {
   }, [items]);
 
   async function loadStarterChores() {
-    if (!householdId) return;
     if (hasStarterChores) {
       setToast("Starter chores already loaded!");
       window.setTimeout(() => setToast(null), 2200);
@@ -345,55 +305,44 @@ function ChoresInner() {
           assigneeMode: starter.assigneeMode,
           active: true,
           schedule: {},
-        } as any);
+        });
       }
 
-      await refresh(householdId);
       setToast(`Added ${starterChores.length} starter chores! 🎉`);
       window.setTimeout(() => setToast(null), 2200);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load starter chores");
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't add the starter chores. Please try again."));
     } finally {
       setBusy(null);
     }
   }
 
   async function remove(id: string) {
-    if (!householdId) return;
     if (!confirm("Delete this chore?")) return;
 
     setBusy(id);
     setError(null);
     try {
       await deleteChoreTemplate(householdId, id);
-      setItems((prev) => prev.filter((x) => x.id !== id));
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to delete chore");
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't delete the chore. Please try again."));
     } finally {
       setBusy(null);
     }
   }
 
   async function toggleActive(c: ChoreTemplate) {
-    if (!householdId) return;
     setBusy(c.id);
     setError(null);
     try {
       await updateChoreTemplate(householdId, c.id, {
         active: !c.active,
-      } as any);
-      setItems((prev) =>
-        prev.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)),
-      );
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to update chore");
+      });
+    } catch (e) {
+      setError(friendlyError(e, "Couldn't update the chore. Please try again."));
     } finally {
       setBusy(null);
     }
-  }
-
-  if (!householdId) {
-    return <div className="text-sm text-gray-500">Loading household…</div>;
   }
 
   return (
