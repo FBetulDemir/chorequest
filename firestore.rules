@@ -79,16 +79,19 @@ service cloud.firestore {
       // Needed by "join by code" (see known gap above)
       allow list: if signedIn();
 
-      // The creator must be the only member
+      // The creator must be the only member; Plus can only be granted by the server
       allow create: if signedIn()
         && request.resource.data.members.keys().hasOnly([me()])
-        && request.resource.data.members[me()] == true;
+        && request.resource.data.members[me()] == true
+        && !('plan' in request.resource.data);
 
       allow update: if signedIn() && (
         // Members can edit household details; membership changes only for themselves
         (
           isMemberOf(resource.data)
           && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([me()])
+          // `plan` is written by the RevenueCat webhook only
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan'])
         )
         ||
         // Joining: a non-member may add only themselves

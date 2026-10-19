@@ -6,6 +6,8 @@ import { getMessaging } from "firebase-admin/messaging";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import * as logger from "firebase-functions/logger";
 import * as functionsV1 from "firebase-functions/v1";
 
@@ -134,3 +136,80 @@ export const cleanupDeletedUser = functionsV1
     await db.recursiveDelete(db.doc(`users/${uid}`));
     logger.info("Cleaned up deleted account", { uid, households: households.size });
   });
+
+// ---------- Subscriptions (RevenueCat) ----------
+
+/** Shared secret RevenueCat sends in the Authorization header (set in the RevenueCat dashboard). */
+const revenuecatWebhookAuth = defineSecret("REVENUECAT_WEBHOOK_AUTH");
+
+const ACTIVE_EVENTS = new Set([
+  "INITIAL_PURCHASE",
+  "RENEWAL",
+  "PRODUCT_CHANGE",
+  "UNCANCELLATION",
+  "NON_RENEWING_PURCHASE",
+  // Still paid up until the period ends:
+  "CANCELLATION",
+  "BILLING_ISSUE",
+]);
+
+type RevenueCatEvent = {
+  type?: string;
+  app_user_id?: string;
+  original_app_user_id?: string;
+  expiration_at_ms?: number | null;
+  product_id?: string;
+  store?: string;
+  entitlement_ids?: string[] | null;
+};
+
+/**
+ * Keeps households/{id}.plan in sync with the purchaser's subscription.
+ * The app logs in to RevenueCat with the Firebase UID, so app_user_id is the UID.
+ */
+export const revenuecatWebhook = onRequest({ secrets: [revenuecatWebhookAuth] }, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).send("Method not allowed");
+    return;
+  }
+  if (req.get("Authorization") !== revenuecatWebhookAuth.value()) {
+    res.status(401).send("Unauthorized");
+    return;
+  }
+
+  const event = (req.body?.event ?? {}) as RevenueCatEvent;
+  const uid = event.app_user_id || event.original_app_user_id;
+  const forPlus = !event.entitlement_ids || event.entitlement_ids.includes("plus");
+  if (!uid || !event.type || event.type === "TEST" || !forPlus) {
+    res.status(200).send("Ignored");
+    return;
+  }
+
+  const householdId = (await db.doc(`users/${uid}`).get()).get("householdId") as string | undefined;
+  if (!householdId) {
+    logger.warn("Subscription event for user without household", { uid, type: event.type });
+    res.status(200).send("No household");
+    return;
+  }
+  const ref = db.doc(`households/${householdId}`);
+
+  if (ACTIVE_EVENTS.has(event.type)) {
+    await ref.update({
+      plan: {
+        tier: "plus",
+        expiresAt: event.expiration_at_ms ?? null,
+        store: event.store ?? null,
+        productId: event.product_id ?? null,
+        purchaserUid: uid,
+        updatedAt: Date.now(),
+      },
+    });
+  } else if (event.type === "EXPIRATION") {
+    // Only clear the plan this purchaser paid for (another member may have their own)
+    const current = (await ref.get()).get("plan") as { purchaserUid?: string } | null;
+    if (!current || current.purchaserUid === uid) await ref.update({ plan: null });
+  }
+
+  logger.info("Subscription event", { uid, householdId, type: event.type });
+  res.status(200).send("OK");
+});
