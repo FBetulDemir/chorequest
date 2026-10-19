@@ -68,3 +68,29 @@ export type ChoreSchedule = {
   seasonalMonth?: number;
   seasonalDay?: number; // 1..28
 };
+
+// Rewards shop (see src/lib/rewards.ts)
+export type Reward = {
+  id: string;
+  title: string;
+  icon: string;
+  cost: number;
+  active: boolean;
+  createdBy: string;
+  createdAt: number;
+};
+
+export type RedemptionStatus = "pending" | "fulfilled";
+
+export type Redemption = {
+  id: string;
+  rewardId: string;
+  title: string;
+  icon: string;
+  cost: number;
+  uid: string;
+  status: RedemptionStatus;
+  createdAt: number;
+  fulfilledBy?: string;
+  fulfilledAt?: number;
+};

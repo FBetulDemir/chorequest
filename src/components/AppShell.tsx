@@ -16,7 +16,7 @@ type NavItem = { href: string; label: string; Icon: LucideIcon; match: string[] 
 const NAV: NavItem[] = [
   { href: "/today", label: "Today", Icon: Sun, match: ["/today"] },
   { href: "/plan", label: "Plan", Icon: CalendarDays, match: ["/plan"] },
-  { href: "/score", label: "Leaders", Icon: Trophy, match: ["/score"] },
+  { href: "/score", label: "Leaders", Icon: Trophy, match: ["/score", "/rewards"] },
   { href: "/household", label: "Household", Icon: House, match: ["/household", "/chores", "/history"] },
 ];
 
