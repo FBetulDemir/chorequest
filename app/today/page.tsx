@@ -20,7 +20,7 @@ import {
 } from "@/src/components/ui/Display";
 import { buildOccurrences, buildPastOccurrences, type Occurrence } from "@/src/lib/schedule";
 import { entryTitle, isOccurrenceOpen, occurrenceKey, survivingCompletions } from "@/src/lib/ledgerHelpers";
-import { assigneeUidFor } from "@/src/lib/assignee";
+import { createAssigneeResolver } from "@/src/lib/assignee";
 import { streakFor } from "@/src/lib/scoring";
 import { friendlyDay, greeting, longDate, timeOfDay } from "@/src/lib/dates";
 import { splitChoreTitle } from "@/src/lib/choreCatalog";
@@ -109,13 +109,19 @@ function TodayInner() {
   const totalToday = doneForToday + dueToday.length;
   const progress = totalToday ? doneForToday / totalToday : 0;
 
+  // Fair rotation: who's next depends on who did it last
+  const whoDoes = useMemo(
+    () => createAssigneeResolver({ members, ledger, openOccurrences: [...overdue, ...openOccurrences] }),
+    [members, ledger, overdue, openOccurrences],
+  );
+
   const memberOf = (u: string | null) => (u ? (members.find((m) => m.uid === u) ?? null) : null);
   const firstName = (profile?.name ?? "").split(" ")[0];
 
   // "Just me" = assigned to me, or anyone can do it
   const visible = (o: Occurrence) => {
     if (filter === "everyone") return true;
-    const id = assigneeUidFor(o.chore, o.dayKey, members);
+    const id = whoDoes(o.chore, o.dayKey);
     return id === null || id === uid;
   };
 
@@ -129,7 +135,7 @@ function TodayInner() {
         key={key}
         chore={o.chore}
         meta={meta}
-        assignee={memberOf(assigneeUidFor(o.chore, o.dayKey, members))}
+        assignee={memberOf(whoDoes(o.chore, o.dayKey))}
         currentUid={uid}
         overdue={isOverdue}
         busy={busyKey === key}
