@@ -14,6 +14,7 @@ import {
 import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
 import type { OccurrenceStatus } from "@/src/lib/ledgerHelpers";
 import { entryTitle } from "@/src/lib/ledgerHelpers";
+import { choreLabel } from "@/src/lib/choreCatalog";
 
 /** Max ledger entries kept in the live subscription. */
 export const LEDGER_LIMIT = 10000;
@@ -113,7 +114,7 @@ export async function recordCompletion(params: {
     type: "complete",
     actorUid: uid,
     delta: chore.points,
-    reason: `Completed: ${chore.title}`,
+    reason: `Completed: ${choreLabel(chore)}`,
     createdAt: Date.now(),
     templateId: chore.id,
     dayKey,
@@ -140,7 +141,7 @@ export async function recordSkip(params: {
       type: "skip",
       actorUid: uid,
       delta: 0,
-      reason: `Skipped: ${chore.title}`,
+      reason: `Skipped: ${choreLabel(chore)}`,
       createdAt: Date.now(),
       templateId: chore.id,
       dayKey,

@@ -1,12 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { doc, onSnapshot, type DocumentData } from "firebase/firestore";
 
 import { db } from "@/src/lib/firebase";
 import { useAuth } from "@/src/components/AuthProvider";
 import { ensureUserProfile } from "@/src/lib/profile";
 import { isDeletingAccount } from "@/src/lib/account";
+import { ensureInviteCode } from "@/src/lib/households";
 import { loadMembers, memberUids, type HouseholdMember } from "@/src/lib/members";
 import { subscribeChoreTemplates } from "@/src/lib/chores";
 import { subscribeLedger } from "@/src/lib/points";
@@ -112,6 +113,17 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
 
   const householdReady = !householdId || householdState?.key === householdId;
   const household = householdId && householdState?.key === householdId ? householdState.value : null;
+
+  // Older households: create the invite document for their code (once per session)
+  const inviteChecked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!uid || !household || inviteChecked.current === household.id) return;
+    if (household.members[uid] !== true) return;
+    inviteChecked.current = household.id;
+    ensureInviteCode(household, uid).catch(() => {
+      inviteChecked.current = null; // try again next time
+    });
+  }, [uid, household]);
 
   // 3) Members (reloaded whenever someone joins or leaves)
   const membersKey = household ? memberUids(household.members).join(",") : "";

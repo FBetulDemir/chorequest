@@ -12,7 +12,8 @@
     "build:mobile": "cross-env MOBILE_BUILD=1 next build && cap sync",
     "ios": "npm run build:mobile && cap open ios",
     "android": "npm run build:mobile && cap open android",
-    "assets:native": "node scripts/generate-native-assets.js && capacitor-assets generate --ios --android --iconBackgroundColor #8b5cf6 --iconBackgroundColorDark #0f0b1a --splashBackgroundColor #8b5cf6 --splashBackgroundColorDark #0f0b1a"
+    "assets:native": "node scripts/generate-native-assets.js && capacitor-assets generate --ios --android --iconBackgroundColor #8b5cf6 --iconBackgroundColorDark #0f0b1a --splashBackgroundColor #8b5cf6 --splashBackgroundColorDark #0f0b1a",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-chorequest \"vitest run --config vitest.rules.config.ts\""
   },
   "dependencies": {
     "@capacitor/android": "^7.6.9",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.6.9",
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

@@ -32,7 +32,8 @@ export type Household = {
 
 export type ChoreTemplate = {
   id: string;
-  title: string;
+  title: string; // older chores have the emoji in the title, e.g. "🧹 Sweep"
+  icon?: string; // newer chores store the emoji separately
   points: number;
   frequency: Frequency;
   assigneeMode: AssigneeMode;
@@ -77,6 +78,10 @@ export type ChoreSchedule = {
   // for seasonal chores: month number 1..12
   seasonalMonth?: number;
   seasonalDay?: number; // 1..28
+
+  // When the day was last changed (ms). Earlier dates don't count, so changing
+  // the day doesn't make old dates look missed.
+  since?: number;
 };
 
 // Rewards shop (see src/lib/rewards.ts)

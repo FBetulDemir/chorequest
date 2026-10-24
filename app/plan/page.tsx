@@ -11,7 +11,7 @@ import { useChoreActions } from "@/src/components/useChoreActions";
 import { EmptyState, ListSkeleton, Segmented } from "@/src/components/ui/Display";
 import { buildOccurrences, type Occurrence } from "@/src/lib/schedule";
 import { isOccurrenceDone, occurrenceKey } from "@/src/lib/ledgerHelpers";
-import { assigneeUidFor } from "@/src/lib/assignee";
+import { createAssigneeResolver } from "@/src/lib/assignee";
 import { friendlyDay } from "@/src/lib/dates";
 import { FREQUENCIES, FREQUENCY_LABEL } from "@/src/lib/choreCatalog";
 import { useTodayStartMs } from "@/src/lib/useToday";
@@ -31,7 +31,7 @@ export default function PlanPage() {
 }
 
 function PlanInner() {
-  const { uid, members, templates, dataLoading } = useReadyHousehold();
+  const { uid, members, templates, ledger, dataLoading } = useReadyHousehold();
   const { statusByKey, busyKey, complete, skip } = useChoreActions();
 
   const [freq, setFreq] = useState<Freq>("all");
@@ -61,6 +61,19 @@ function PlanInner() {
   }, [occurrencesAll, freq, searchQuery]);
 
   const isDone = (o: Occurrence) => isOccurrenceDone(statusByKey.get(occurrenceKey(o.templateId, o.dayKey)));
+
+  // Fair rotation over everything still to do (not just what the filters show)
+  const whoDoes = useMemo(
+    () =>
+      createAssigneeResolver({
+        members,
+        ledger,
+        openOccurrences: occurrencesAll.filter(
+          (o) => !isOccurrenceDone(statusByKey.get(occurrenceKey(o.templateId, o.dayKey))),
+        ),
+      }),
+    [members, ledger, occurrencesAll, statusByKey],
+  );
   const upcomingList = filtered.filter((o) => !isDone(o));
   const completedList = filtered.filter(isDone);
   const visible = view === "completed" ? completedList : upcomingList;
@@ -150,7 +163,7 @@ function PlanInner() {
           </div>
           {list.map((o) => {
             const key = occurrenceKey(o.templateId, o.dayKey);
-            const assigneeId = assigneeUidFor(o.chore, o.dayKey, members);
+            const assigneeId = whoDoes(o.chore, o.dayKey);
             return (
               <ChoreCard
                 key={key}

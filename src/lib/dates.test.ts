@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { daysFrom, friendlyDay, greeting, timeAgo } from "@/src/lib/dates";
-import { splitChoreTitle } from "@/src/lib/choreCatalog";
+import { choreLabel, choreParts, splitChoreTitle } from "@/src/lib/choreCatalog";
 
 const today = new Date(2026, 9, 19).getTime(); // Mon 19 Oct 2026
 
@@ -58,5 +58,17 @@ describe("splitChoreTitle", () => {
 
   it("keeps titles without an emoji intact", () => {
     expect(splitChoreTitle("Vacuum car")).toEqual({ icon: "✨", name: "Vacuum car" });
+  });
+});
+
+describe("choreParts / choreLabel", () => {
+  it("reads the separate icon field on newer chores", () => {
+    expect(choreParts({ title: "Vacuum", icon: "🧹" })).toEqual({ icon: "🧹", name: "Vacuum" });
+    expect(choreLabel({ title: "Vacuum", icon: "🧹" })).toBe("🧹 Vacuum");
+  });
+
+  it("falls back to the emoji in older titles", () => {
+    expect(choreParts({ title: "🍽️ Do Dishes" })).toEqual({ icon: "🍽️", name: "Do Dishes" });
+    expect(choreLabel({ title: "🍽️ Do Dishes" })).toBe("🍽️ Do Dishes");
   });
 });
