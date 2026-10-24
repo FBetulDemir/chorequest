@@ -77,6 +77,10 @@ export type ChoreSchedule = {
   // for seasonal chores: month number 1..12
   seasonalMonth?: number;
   seasonalDay?: number; // 1..28
+
+  // When the day was last changed (ms). Earlier dates don't count, so changing
+  // the day doesn't make old dates look missed.
+  since?: number;
 };
 
 // Rewards shop (see src/lib/rewards.ts)
