@@ -28,7 +28,11 @@ import { friendlyError } from "@/src/lib/errors";
 import { PlusPrompt, usePlan } from "@/src/components/Plus";
 import { FREE_LIMITS, choreLimitReached } from "@/src/lib/plan";
 import type { HouseholdMember } from "@/src/lib/members";
-import type { AssigneeMode, ChoreTemplate, ChoreTemplateInput, Frequency } from "@/src/lib/types";
+import { WEEKDAY_NAMES, describeSchedule, effectiveMonthDay, effectiveWeekDay, ordinal, startOfLocalDayMs } from "@/src/lib/schedule";
+import type { AssigneeMode, ChoreSchedule, ChoreTemplate, ChoreTemplateInput, Frequency } from "@/src/lib/types";
+
+// Week starts on Monday (as in Sweden)
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 const FREQUENCY_EMOJI: Record<Frequency, string> = {
   daily: "☀️",
@@ -163,6 +167,8 @@ export default function ChoreManager() {
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-bold text-ink">{name}</span>
                       <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+                        <span>{describeSchedule(c)}</span>
+                        <span aria-hidden="true" className="text-faint">·</span>
                         {whoLabel(c, members)}
                         {!c.active ? (
                           <span className="rounded-full bg-gray-100 px-2 py-0.5 font-bold text-gray-600">Paused</span>
@@ -220,6 +226,9 @@ function ChoreEditor({
   const [name, setName] = useState(initial.name);
   const [points, setPoints] = useState(chore?.points ?? 30);
   const [frequency, setFrequency] = useState<Frequency>(chore?.frequency ?? "weekly");
+  // New chores default to today's weekday / date; existing ones show the day they fall on now
+  const [weekDay, setWeekDay] = useState(() => (chore ? effectiveWeekDay(chore) : new Date().getDay()));
+  const [monthDay, setMonthDay] = useState(() => (chore ? effectiveMonthDay(chore) : Math.min(28, new Date().getDate())));
   const [assigneeMode, setAssigneeMode] = useState<AssigneeMode>(chore?.assigneeMode ?? "anyone");
   const [fixedUid, setFixedUid] = useState(
     chore?.fixedAssigneeUid && members.some((m) => m.uid === chore.fixedAssigneeUid) ? chore.fixedAssigneeUid : uid,
@@ -234,6 +243,16 @@ function ChoreEditor({
     setBusy("save");
     setError(null);
     try {
+      let schedule: ChoreSchedule = chore?.schedule ?? {};
+      if (frequency === "weekly" || frequency === "monthly") {
+        const next: ChoreSchedule = frequency === "weekly" ? { weekDay } : { monthDay };
+        const unchanged =
+          chore &&
+          chore.frequency === frequency &&
+          (frequency === "weekly" ? effectiveWeekDay(chore) === weekDay : effectiveMonthDay(chore) === monthDay);
+        // Changing the day starts the new pattern today, so earlier dates aren't "missed"
+        schedule = unchanged ? { ...chore.schedule, ...next } : chore ? { ...next, since: startOfLocalDayMs(Date.now()) } : next;
+      }
       const data: ChoreTemplateInput = {
         title: choreTitle(icon, name),
         points,
@@ -241,7 +260,7 @@ function ChoreEditor({
         assigneeMode,
         active: chore?.active ?? true,
         ...(assigneeMode === "fixed" ? { fixedAssigneeUid: fixedUid } : {}),
-        schedule: chore?.schedule ?? {},
+        schedule,
       };
       if (chore) {
         await updateChoreTemplate(householdId, chore.id, data);
@@ -424,7 +443,47 @@ function ChoreEditor({
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-muted">Repeats from the day the chore is created.</p>
+            {frequency === "weekly" ? (
+              <div className="mt-3">
+                <div className="mb-2 text-xs font-bold text-muted">On which day?</div>
+                <div className="grid grid-cols-7 gap-1.5" role="radiogroup" aria-label="Day of the week">
+                  {WEEK_ORDER.map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      role="radio"
+                      aria-checked={weekDay === d}
+                      aria-label={WEEKDAY_NAMES[d]}
+                      onClick={() => setWeekDay(d)}
+                      className={clsx(
+                        "h-11 rounded-xl text-sm font-extrabold transition",
+                        weekDay === d ? "bg-brand text-white" : "bg-surface-2 text-ink hover:bg-brand-soft",
+                      )}>
+                      {WEEKDAY_NAMES[d].slice(0, 2)}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted">Every {WEEKDAY_NAMES[weekDay]}</p>
+              </div>
+            ) : frequency === "monthly" ? (
+              <label className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-xs font-bold text-muted">On which day of the month?</span>
+                <select
+                  className="cq-input w-auto"
+                  value={monthDay}
+                  onChange={(e) => setMonthDay(Number(e.target.value))}>
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {ordinal(d)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="mt-2 text-xs text-muted">
+                {frequency === "daily" ? "Every day." : "Every 3 months, starting from when the chore is created."}
+              </p>
+            )}
           </fieldset>
 
           {/* Assignee */}

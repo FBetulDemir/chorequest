@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ChoreTemplate } from "@/src/lib/types";
-import { buildOccurrences, buildPastOccurrences, dayKeyFromTs, occurrencesInRange } from "@/src/lib/schedule";
+import {
+  buildOccurrences,
+  buildPastOccurrences,
+  dayKeyFromTs,
+  describeSchedule,
+  occurrencesInRange,
+  ordinal,
+} from "@/src/lib/schedule";
 
 const day = (m: number, d: number) => new Date(2026, m - 1, d, 0, 0, 0, 0).getTime();
 
@@ -129,6 +136,23 @@ describe("chosen days", () => {
       "2026-10-25",
       "2026-11-01",
       "2026-11-08",
+    ]);
+  });
+});
+
+describe("describeSchedule", () => {
+  it("describes each frequency in plain words", () => {
+    expect(describeSchedule(chore({}))).toBe("Every day");
+    expect(describeSchedule(chore({ frequency: "weekly", schedule: { weekDay: 6 } }))).toBe("Every Saturday");
+    // Without a chosen day: the weekday it was created on (1 Oct 2026 was a Thursday)
+    expect(describeSchedule(chore({ frequency: "weekly", createdAt: day(10, 1) }))).toBe("Every Thursday");
+    expect(describeSchedule(chore({ frequency: "monthly", schedule: { monthDay: 22 } }))).toBe("22nd of each month");
+    expect(describeSchedule(chore({ frequency: "seasonal" }))).toBe("Every 3 months");
+  });
+
+  it("writes English ordinals", () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 28].map(ordinal)).toEqual([
+      "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "28th",
     ]);
   });
 });

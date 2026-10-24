@@ -207,3 +207,37 @@ export function buildPastOccurrences(
   out.sort((a, b) => a.dateMs - b.dateMs);
   return out;
 }
+
+export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+export function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  return `${n}${({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ?? "th"}`;
+}
+
+/** The weekday a weekly chore falls on (chosen, or the anchor's). */
+export function effectiveWeekDay(t: ChoreTemplate, nowMs = Date.now()): number {
+  return typeof t.schedule?.weekDay === "number" ? t.schedule.weekDay : new Date(anchorOf(t, nowMs)).getDay();
+}
+
+/** The day of the month a monthly chore falls on (chosen, or the anchor's, capped at 28). */
+export function effectiveMonthDay(t: ChoreTemplate, nowMs = Date.now()): number {
+  return typeof t.schedule?.monthDay === "number"
+    ? t.schedule.monthDay
+    : Math.min(28, new Date(anchorOf(t, nowMs)).getDate());
+}
+
+/** "Every day", "Every Saturday", "15th of each month", "Every 3 months". */
+export function describeSchedule(t: ChoreTemplate, nowMs = Date.now()): string {
+  switch (normalizeFreq(t.frequency)) {
+    case "daily":
+      return "Every day";
+    case "weekly":
+      return `Every ${WEEKDAY_NAMES[effectiveWeekDay(t, nowMs)]}`;
+    case "monthly":
+      return `${ordinal(effectiveMonthDay(t, nowMs))} of each month`;
+    default:
+      return "Every 3 months";
+  }
+}
