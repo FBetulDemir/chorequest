@@ -10,8 +10,9 @@ rules_version = '2';
 //   2. Test with the emulator:  npx firebase emulators:start --only firestore
 //   3. Deploy:                  npx firebase deploy --only firestore:rules --project chore-quest-22419
 //
-// Known gap (roadmap §2.2): joining by code needs every signed-in user to be able to
-// list households. It will be closed by moving invite codes to their own collection.
+// Joining: invite codes live in inviteCodes/{CODE}, which can be fetched by exact
+// code but never listed. A non-member can only add themselves to a household by
+// presenting a code that belongs to it.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -72,12 +73,27 @@ service cloud.firestore {
       }
     }
 
+    // ---------- Invite codes ----------
+    match /inviteCodes/{code} {
+      // Look up by exact code only; listing would reveal every household
+      allow get: if signedIn();
+      allow list: if false;
+
+      allow create: if signedIn()
+        && code.size() >= 6 && code.size() <= 10
+        && request.resource.data.householdId is string
+        && request.resource.data.createdBy == me()
+        && isMember(request.resource.data.householdId);
+
+      // Codes are never reassigned; members can retire their household's code
+      allow update: if false;
+      allow delete: if signedIn() && isMember(resource.data.householdId);
+    }
+
     // ---------- Households ----------
     match /households/{hid} {
       allow get: if isMemberOf(resource.data);
-
-      // Needed by "join by code" (see known gap above)
-      allow list: if signedIn();
+      allow list: if false;
 
       // The creator must be the only member; Plus can only be granted by the server
       allow create: if signedIn()
@@ -94,11 +110,12 @@ service cloud.firestore {
           && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan'])
         )
         ||
-        // Joining: a non-member may add only themselves
+        // Joining: a non-member may add only themselves, with a valid invite code
         (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'updatedAt', 'lastJoinCode'])
           && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([me()])
           && request.resource.data.members[me()] == true
+          && get(/databases/$(database)/documents/inviteCodes/$(request.resource.data.lastJoinCode)).data.householdId == hid
         )
       );
 

@@ -1,16 +1,20 @@
 import { auth, db } from "@/src/lib/firebase";
 import {
   collection,
+  deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
 import type { Household } from "@/src/lib/types";
 import { ensureUserProfile } from "@/src/lib/profile";
+import { memberUids } from "@/src/lib/members";
 import { memberLimitReached, planFor } from "@/src/lib/plan";
 
 function randomCode(len = 6) {
@@ -30,10 +34,33 @@ function userRef(uid: string) {
   return doc(db, "users", uid);
 }
 
+/**
+ * inviteCodes/{CODE} → { householdId }. Codes can be looked up by their exact
+ * value but never listed, so knowing a code is what lets someone join.
+ */
+function inviteRef(code: string) {
+  return doc(db, "inviteCodes", code);
+}
+
 function requireAuthUid(): string {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error("Not signed in.");
   return uid;
+}
+
+/** Reserves a new, unused invite code for a household (the caller must be a member). */
+async function claimInviteCode(hid: string, uid: string): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomCode(6);
+    const claimed = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(inviteRef(code));
+      if (snap.exists()) return false; // taken, try another
+      tx.set(inviteRef(code), { householdId: hid, createdBy: uid, createdAt: Date.now() });
+      return true;
+    });
+    if (claimed) return code;
+  }
+  throw new Error("Couldn't create an invite code. Please try again.");
 }
 
 export async function createHousehold(params: {
@@ -51,7 +78,7 @@ export async function createHousehold(params: {
   const household: Household = {
     id: hidRef.id,
     name: params.name.trim() || "Household",
-    code: randomCode(6),
+    code: "",
     createdAt: now,
     updatedAt: now,
     members: { [authUid]: true },
@@ -59,6 +86,10 @@ export async function createHousehold(params: {
 
   // Create household
   await setDoc(hidRef, household);
+
+  // Now that we're a member, reserve an invite code for it
+  household.code = await claimInviteCode(hidRef.id, authUid);
+  await updateDoc(hidRef, { code: household.code });
 
   // Sync user profile
   await updateDoc(userRef(authUid), {
@@ -69,46 +100,85 @@ export async function createHousehold(params: {
   return household;
 }
 
+/** Finds the household for a code: the invite document, or (for old codes) a direct lookup. */
+async function householdIdForCode(code: string): Promise<string | null> {
+  const invite = await getDoc(inviteRef(code));
+  if (invite.exists()) return String(invite.get("householdId"));
+  try {
+    // Households created before invite documents existed. The security rules
+    // no longer allow this query; it only helps until every household is migrated.
+    const snap = await getDocs(query(collection(db, "households"), where("code", "==", code)));
+    return snap.empty ? null : snap.docs[0].id;
+  } catch {
+    return null;
+  }
+}
+
 export async function joinHouseholdByCode(params: {
   uid: string;
   code: string;
 }): Promise<Household> {
   const authUid = requireAuthUid();
-
   const code = params.code.trim().toUpperCase();
 
-  const q = query(collection(db, "households"), where("code", "==", code));
-  const snap = await getDocs(q);
-  if (snap.empty) throw new Error("Household code not found.");
-
-  const d = snap.docs[0];
-  const hid = d.id;
-
-  // Free households have a member limit
-  const data = d.data();
-  const members = (data.members ?? {}) as Record<string, boolean>;
-  const count = Object.keys(members).filter((u) => members[u] === true && u !== authUid).length;
-  const plan = planFor({ plan: data.plan ?? null, createdAt: Number(data.createdAt ?? Date.now()) });
-  if (memberLimitReached(plan, count)) {
-    throw Object.assign(new Error("Household is full"), { code: "household-full" });
-  }
+  const hid = await householdIdForCode(code);
+  if (!hid) throw new Error("Household code not found.");
   const now = Date.now();
 
-  // 1) Household membership update
+  // 1) Join. The rules check that the code belongs to this household.
   await updateDoc(householdRef(hid), {
     [`members.${authUid}`]: true,
+    lastJoinCode: code,
     updatedAt: now,
   });
 
-  // 2) User profile householdId update
+  // 2) Now we can read it: respect the free plan's member limit
+  const joined = await getHousehold(hid);
+  if (!joined) throw new Error("Household disappeared after join.");
+  const others = memberUids(joined.members).filter((u) => u !== authUid).length;
+  if (memberLimitReached(planFor(joined), others)) {
+    await updateDoc(householdRef(hid), { [`members.${authUid}`]: deleteField(), updatedAt: Date.now() });
+    throw Object.assign(new Error("Household is full"), { code: "household-full" });
+  }
+
+  // 3) Link the profile
   await updateDoc(userRef(authUid), {
     householdId: hid,
     updatedAt: now,
   });
 
-  const updated = await getHousehold(hid);
-  if (!updated) throw new Error("Household disappeared after join.");
-  return updated;
+  return joined;
+}
+
+/**
+ * Makes sure the household's code has an invite document. Households created
+ * before invite documents existed get one the first time a member opens the app.
+ */
+export async function ensureInviteCode(household: Household, uid: string): Promise<void> {
+  if (household.code) {
+    const invite = await getDoc(inviteRef(household.code));
+    if (invite.exists() && invite.get("householdId") === household.id) return;
+    if (!invite.exists()) {
+      const created = await runTransaction(db, async (tx) => {
+        const snap = await tx.get(inviteRef(household.code));
+        if (snap.exists()) return false;
+        tx.set(inviteRef(household.code), { householdId: household.id, createdBy: uid, createdAt: Date.now() });
+        return true;
+      });
+      if (created) return;
+    }
+  }
+  // No code yet, or (very unlikely) it collides with another household's: get a fresh one
+  const code = await claimInviteCode(household.id, uid);
+  await updateDoc(householdRef(household.id), { code, updatedAt: Date.now() });
+}
+
+/** Replaces the invite code; the old one stops working. */
+export async function regenerateInviteCode(household: Household, uid: string): Promise<string> {
+  const code = await claimInviteCode(household.id, uid);
+  await updateDoc(householdRef(household.id), { code, updatedAt: Date.now() });
+  if (household.code) await deleteDoc(inviteRef(household.code)).catch(() => {});
+  return code;
 }
 
 export async function getHousehold(hid: string): Promise<Household | null> {

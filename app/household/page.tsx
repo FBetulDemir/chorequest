@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Copy, History, LogOut, Pencil, Share2 } from "lucide-react";
+import { Copy, History, LogOut, Pencil, RefreshCw, Share2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import RequireAuth from "@/src/components/RequireAuth";
@@ -11,7 +11,7 @@ import { useFeedback } from "@/src/components/ui/Feedback";
 import { Button, IconButton } from "@/src/components/ui/Button";
 import { Avatar, Card, ListRow, SectionTitle } from "@/src/components/ui/Display";
 import { ConfirmSheet, Sheet } from "@/src/components/ui/Sheet";
-import { renameHousehold } from "@/src/lib/households";
+import { regenerateInviteCode, renameHousehold } from "@/src/lib/households";
 import { getRangeMs } from "@/src/lib/ledgerHelpers";
 import { scoresInRange } from "@/src/lib/scoring";
 import { friendlyError } from "@/src/lib/errors";
@@ -58,6 +58,22 @@ function HouseholdInner() {
     const { startMs, endMs } = getRangeMs("week");
     return scoresInRange(ledger, startMs, endMs);
   }, [ledger]);
+
+  const [newCodeAsk, setNewCodeAsk] = useState(false);
+  const [newCodeBusy, setNewCodeBusy] = useState(false);
+
+  async function newCode() {
+    setNewCodeBusy(true);
+    try {
+      const code = await regenerateInviteCode(household, uid);
+      toast(`New invite code: ${code}`);
+    } catch (e) {
+      toast(friendlyError(e, "Couldn't create a new code. Please try again."), { tone: "error" });
+    } finally {
+      setNewCodeBusy(false);
+      setNewCodeAsk(false);
+    }
+  }
 
   async function copyCode() {
     const ok = await copyText(household.code);
@@ -123,6 +139,18 @@ function HouseholdInner() {
         <Button variant="primary" block className="mt-3" onClick={share}>
           <Share2 size={16} aria-hidden="true" /> Share invite
         </Button>
+        <Button variant="ghost" size="sm" block className="mt-1" onClick={() => setNewCodeAsk(true)}>
+          <RefreshCw size={14} aria-hidden="true" /> Get a new code
+        </Button>
+        <ConfirmSheet
+          open={newCodeAsk}
+          title="Get a new invite code?"
+          message="The current code and links you've shared stop working. People already in the household stay."
+          confirmLabel="New code"
+          busy={newCodeBusy}
+          onConfirm={newCode}
+          onCancel={() => setNewCodeAsk(false)}
+        />
       </Card>
 
       {/* Members */}

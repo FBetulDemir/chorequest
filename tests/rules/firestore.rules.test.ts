@@ -58,6 +58,9 @@ beforeEach(async () => {
       createdAt: 1,
       updatedAt: 1,
     });
+    await setDoc(doc(db, "inviteCodes/ABC234"), { householdId: "h1", createdBy: "alice", createdAt: 1 });
+    await setDoc(doc(db, "households/h2"), { id: "h2", name: "Other", code: "OTH234", members: { zed: true }, createdAt: 1, updatedAt: 1 });
+    await setDoc(doc(db, "inviteCodes/OTH234"), { householdId: "h2", createdBy: "zed", createdAt: 1 });
     await setDoc(doc(db, "households/h1/choreTemplates/t1"), {
       title: "🧹 Sweep",
       points: 10,
@@ -136,7 +139,7 @@ describe("households", () => {
   });
 
   it("can be created with yourself as the only member and no plan", async () => {
-    await assertSucceeds(setDoc(doc(as("eve"), "households/h2"), { id: "h2", name: "Eve's", code: "EVE234", members: { eve: true }, createdAt: 1, updatedAt: 1 }));
+    await assertSucceeds(setDoc(doc(as("eve"), "households/h9"), { id: "h9", name: "Eve's", code: "EVE234", members: { eve: true }, createdAt: 1, updatedAt: 1 }));
     await assertFails(setDoc(doc(as("eve"), "households/h3"), { id: "h3", name: "X", code: "X", members: { eve: true, bob: true }, createdAt: 1, updatedAt: 1 }));
     await assertFails(setDoc(doc(as("eve"), "households/h4"), { id: "h4", name: "X", code: "X", members: { eve: true }, plan: { tier: "plus", expiresAt: null }, createdAt: 1, updatedAt: 1 }));
   });
@@ -149,17 +152,52 @@ describe("households", () => {
     await assertSucceeds(updateDoc(doc(as("alice"), "households/h1"), { "members.alice": deleteField(), updatedAt: 2 }));
   });
 
-  it("lets a non-member add only themselves", async () => {
-    await assertSucceeds(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, updatedAt: 2 }));
+  it("lets a non-member add only themselves, with this household's invite code", async () => {
+    await assertSucceeds(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, lastJoinCode: "ABC234", updatedAt: 2 }));
+  });
+
+  it("refuses to join without a valid code for this household", async () => {
+    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, updatedAt: 2 }));
+    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, lastJoinCode: "OTH234", updatedAt: 2 }));
+    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, lastJoinCode: "NOPE99", updatedAt: 2 }));
   });
 
   it("doesn't let a non-member change anything else", async () => {
-    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, name: "Mine now" }));
-    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.mallory": true }));
+    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.eve": true, lastJoinCode: "ABC234", name: "Mine now" }));
+    await assertFails(updateDoc(doc(as("eve"), "households/h1"), { "members.mallory": true, lastJoinCode: "ABC234" }));
+  });
+
+  it("can't be listed or searched, not even by code", async () => {
+    await assertFails(getDocs(query(collection(as("eve"), "households"), where("code", "==", "ABC234"))));
+    await assertFails(getDocs(collection(as("alice"), "households")));
   });
 
   it("can't be deleted from the app", async () => {
     await assertFails(deleteDoc(doc(as("alice"), "households/h1")));
+  });
+});
+
+describe("invite codes", () => {
+  it("can be looked up by exact code, but not listed", async () => {
+    await assertSucceeds(getDoc(doc(as("eve"), "inviteCodes/ABC234")));
+    await assertFails(getDoc(doc(anon(), "inviteCodes/ABC234")));
+    await assertFails(getDocs(collection(as("eve"), "inviteCodes")));
+  });
+
+  it("can only be created by members, for their own household", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), "inviteCodes/NEW234"), { householdId: "h1", createdBy: "alice", createdAt: 2 }));
+    await assertFails(setDoc(doc(as("eve"), "inviteCodes/EVE234"), { householdId: "h1", createdBy: "eve", createdAt: 2 }));
+    await assertFails(setDoc(doc(as("alice"), "inviteCodes/BAD234"), { householdId: "h2", createdBy: "alice", createdAt: 2 }));
+  });
+
+  it("can't be taken over or reassigned", async () => {
+    await assertFails(setDoc(doc(as("alice"), "inviteCodes/OTH234"), { householdId: "h1", createdBy: "alice", createdAt: 2 }));
+    await assertFails(updateDoc(doc(as("alice"), "inviteCodes/ABC234"), { householdId: "h2" }));
+  });
+
+  it("can be retired by members of its household", async () => {
+    await assertSucceeds(deleteDoc(doc(as("bob"), "inviteCodes/ABC234")));
+    await assertFails(deleteDoc(doc(as("alice"), "inviteCodes/OTH234")));
   });
 });
 
@@ -220,19 +258,27 @@ describe("rewards", () => {
 
 // The writes the app makes, in the order it makes them
 describe("app flows", () => {
-  it("sign-up: create profile, then create a household and link it", async () => {
+  it("sign-up: create profile, then a household with an invite code, and link it", async () => {
     const db = as("carol");
     await assertSucceeds(setDoc(doc(db, "users/carol"), { uid: "carol", email: "c@x.se", name: "", householdId: null, createdAt: 1, updatedAt: 1 }));
-    await assertSucceeds(setDoc(doc(db, "households/hc"), { id: "hc", name: "Carol's", code: "CAR234", members: { carol: true }, createdAt: 1, updatedAt: 1 }));
+    await assertSucceeds(setDoc(doc(db, "households/hc"), { id: "hc", name: "Carol's", code: "", members: { carol: true }, createdAt: 1, updatedAt: 1 }));
+    await assertSucceeds(
+      runTransaction(db, async (tx) => {
+        const ref = doc(db, "inviteCodes/CAR234");
+        if (!(await tx.get(ref)).exists()) tx.set(ref, { householdId: "hc", createdBy: "carol", createdAt: 1 });
+      }),
+    );
+    await assertSucceeds(updateDoc(doc(db, "households/hc"), { code: "CAR234" }));
     await assertSucceeds(updateDoc(doc(db, "users/carol"), { householdId: "hc", updatedAt: 2 }));
     await assertSucceeds(updateDoc(doc(db, "users/carol"), { name: "Carol", avatar: "🦊", updatedAt: 3 }));
   });
 
-  it("join by code: find the household, add yourself, then link your profile", async () => {
+  it("join by code: look up the invite, add yourself, read the household, link your profile", async () => {
     const db = as("eve");
-    const found = await assertSucceeds(getDocs(query(collection(db, "households"), where("code", "==", "ABC234"))));
-    const hid = found.docs[0].id;
-    await assertSucceeds(updateDoc(doc(db, "households", hid), { "members.eve": true, updatedAt: 2 }));
+    const invite = await assertSucceeds(getDoc(doc(db, "inviteCodes/ABC234")));
+    const hid = String(invite.get("householdId"));
+    await assertSucceeds(updateDoc(doc(db, "households", hid), { "members.eve": true, lastJoinCode: "ABC234", updatedAt: 2 }));
+    await assertSucceeds(getDoc(doc(db, "households", hid)));
     await assertSucceeds(updateDoc(doc(db, "users/eve"), { householdId: hid, updatedAt: 2 }));
     await assertSucceeds(getDoc(doc(db, "households/h1/choreTemplates/t1")));
   });
@@ -246,6 +292,26 @@ describe("app flows", () => {
         if (!snap.exists()) tx.set(ref, completion("alice"));
       }),
     );
+  });
+
+  it("backfill: a member creates the invite document for an existing household's code", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await deleteDoc(doc(ctx.firestore(), "inviteCodes/ABC234"));
+    });
+    const db = as("bob");
+    await assertSucceeds(
+      runTransaction(db, async (tx) => {
+        const ref = doc(db, "inviteCodes/ABC234");
+        if (!(await tx.get(ref)).exists()) tx.set(ref, { householdId: "h1", createdBy: "bob", createdAt: 3 });
+      }),
+    );
+  });
+
+  it("new invite code: create it, switch the household to it, retire the old one", async () => {
+    const db = as("alice");
+    await assertSucceeds(setDoc(doc(db, "inviteCodes/FRE234"), { householdId: "h1", createdBy: "alice", createdAt: 3 }));
+    await assertSucceeds(updateDoc(doc(db, "households/h1"), { code: "FRE234", updatedAt: 3 }));
+    await assertSucceeds(deleteDoc(doc(db, "inviteCodes/ABC234")));
   });
 
   it("leave a household: remove membership, then unlink the profile", async () => {
