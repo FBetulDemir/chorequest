@@ -5,6 +5,25 @@ import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { Button, IconButton } from "@/src/components/ui/Button";
 
+// Page scrolling is locked while any sheet is open. Sheets can stack (an editor
+// with a "Delete?" confirmation on top) and close in any order, so count them
+// rather than having each one restore the value it saw when it opened.
+let openSheets = 0;
+let overflowBeforeSheets = "";
+
+function lockPageScroll() {
+  if (openSheets === 0) {
+    overflowBeforeSheets = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  openSheets += 1;
+}
+
+function unlockPageScroll() {
+  openSheets = Math.max(0, openSheets - 1);
+  if (openSheets === 0) document.body.style.overflow = overflowBeforeSheets;
+}
+
 /**
  * Bottom sheet on phones, centered dialog on larger screens.
  * Closes on Escape or a tap on the backdrop, and locks page scroll while open.
@@ -34,8 +53,7 @@ export function Sheet({
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
+    lockPageScroll();
 
     // Focus the first field (or the panel) for keyboard and screen-reader users
     const first = panelRef.current?.querySelector<HTMLElement>(
@@ -49,7 +67,7 @@ export function Sheet({
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = overflow;
+      unlockPageScroll();
       previouslyFocused?.focus?.();
     };
   }, [open]);
