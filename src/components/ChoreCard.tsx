@@ -6,7 +6,7 @@ import { Check, SkipForward } from "lucide-react";
 
 import { Spinner } from "@/src/components/ui/Button";
 import { Avatar, PointsPill } from "@/src/components/ui/Display";
-import { splitChoreTitle } from "@/src/lib/choreCatalog";
+import { choreParts } from "@/src/lib/choreCatalog";
 import { haptic } from "@/src/lib/native";
 import type { HouseholdMember } from "@/src/lib/members";
 import type { ChoreTemplate } from "@/src/lib/types";
@@ -62,7 +62,7 @@ export function ChoreCard({
   onComplete?: (origin: { x: number; y: number }) => void;
   onSkip?: () => void;
 }) {
-  const { icon, name } = splitChoreTitle(chore.title);
+  const { icon, name } = choreParts(chore);
   const checkRef = useRef<HTMLButtonElement>(null);
   const isMe = assignee?.uid === currentUid;
   const canAct = !done && !!onComplete;

@@ -16,7 +16,7 @@ import { Mascot } from "@/src/components/ui/Mascot";
 import { updateUserProfile } from "@/src/lib/profile";
 import { createHousehold, joinHouseholdByCode } from "@/src/lib/households";
 import { createChoreTemplate } from "@/src/lib/chores";
-import { AVATAR_EMOJIS, FREQUENCY_LABEL, STARTER_CHORES, choreTitle } from "@/src/lib/choreCatalog";
+import { AVATAR_EMOJIS, FREQUENCY_LABEL, STARTER_CHORES } from "@/src/lib/choreCatalog";
 import { friendlyError } from "@/src/lib/errors";
 import { copyText, shareText } from "@/src/lib/native";
 import { inviteMessage } from "@/src/lib/invite";
@@ -352,7 +352,8 @@ function ChoresStep({ onNext }: { onNext: () => void }) {
         [...selected].map((i) => {
           const s = STARTER_CHORES[i];
           return createChoreTemplate(household.id, {
-            title: choreTitle(s.icon, s.title),
+            title: s.title,
+            icon: s.icon,
             points: s.points,
             frequency: s.frequency,
             assigneeMode: s.assigneeMode,

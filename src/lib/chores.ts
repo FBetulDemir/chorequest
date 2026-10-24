@@ -21,6 +21,7 @@ function toChoreTemplate(id: string, data: DocumentData): ChoreTemplate {
   return {
     id,
     title: data.title ?? "",
+    icon: typeof data.icon === "string" && data.icon ? data.icon : undefined,
     points: Number(data.points ?? 0),
     frequency: data.frequency ?? "weekly",
     assigneeMode: data.assigneeMode ?? "anyone",

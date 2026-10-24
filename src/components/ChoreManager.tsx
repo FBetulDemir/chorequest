@@ -22,7 +22,7 @@ import {
   ICON_CATEGORIES,
   STARTER_CHORES,
   choreTitle,
-  splitChoreTitle,
+  choreParts,
 } from "@/src/lib/choreCatalog";
 import { friendlyError } from "@/src/lib/errors";
 import { PlusPrompt, usePlan } from "@/src/components/Plus";
@@ -69,15 +69,15 @@ export default function ChoreManager() {
     const map: Record<Frequency, ChoreTemplate[]> = { daily: [], weekly: [], monthly: [], seasonal: [] };
     for (const c of templates) map[c.frequency]?.push(c);
     for (const f of FREQUENCIES) {
-      map[f].sort((a, b) => splitChoreTitle(a.title).name.localeCompare(splitChoreTitle(b.title).name));
+      map[f].sort((a, b) => choreParts(a).name.localeCompare(choreParts(b).name));
     }
     return map;
   }, [templates]);
 
   // Starter chores count as loaded when at least 3 of them exist
   const hasStarterChores = useMemo(() => {
-    const starterTitles = new Set(STARTER_CHORES.map((s) => choreTitle(s.icon, s.title)));
-    return templates.filter((t) => starterTitles.has(t.title)).length >= 3;
+    const starterNames = new Set(STARTER_CHORES.map((s) => s.title));
+    return templates.filter((t) => starterNames.has(choreParts(t).name)).length >= 3;
   }, [templates]);
 
   async function addStarterChores() {
@@ -90,7 +90,8 @@ export default function ChoreManager() {
       await Promise.all(
         STARTER_CHORES.map((s) =>
           createChoreTemplate(householdId, {
-            title: choreTitle(s.icon, s.title),
+            title: s.title,
+            icon: s.icon,
             points: s.points,
             frequency: s.frequency,
             assigneeMode: s.assigneeMode,
@@ -150,7 +151,7 @@ export default function ChoreManager() {
           </div>
           <ul className="divide-y divide-line">
             {grouped[f].map((c) => {
-              const { icon, name } = splitChoreTitle(c.title);
+              const { icon, name } = choreParts(c);
               return (
                 <li key={c.id}>
                   <button
@@ -220,7 +221,7 @@ function ChoreEditor({
   onClose: () => void;
 }) {
   const { toast } = useFeedback();
-  const initial = chore ? splitChoreTitle(chore.title) : { icon: "🪴", name: "" };
+  const initial = chore ? choreParts(chore) : { icon: "🪴", name: "" };
 
   const [icon, setIcon] = useState(initial.icon);
   const [name, setName] = useState(initial.name);
@@ -254,7 +255,8 @@ function ChoreEditor({
         schedule = unchanged ? { ...chore.schedule, ...next } : chore ? { ...next, since: startOfLocalDayMs(Date.now()) } : next;
       }
       const data: ChoreTemplateInput = {
-        title: choreTitle(icon, name),
+        title: name.trim(),
+        icon,
         points,
         frequency,
         assigneeMode,

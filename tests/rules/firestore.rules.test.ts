@@ -207,6 +207,8 @@ describe("chores", () => {
     await assertSucceeds(getDoc(doc(db, "households/h1/choreTemplates/t1")));
     await assertSucceeds(addDoc(collection(db, "households/h1/choreTemplates"), { title: "🧺 Laundry", points: 30, frequency: "weekly", assigneeMode: "rotating", active: true, schedule: {}, createdAt: 1, updatedAt: 1 }));
     await assertFails(addDoc(collection(db, "households/h1/choreTemplates"), { title: "Cheat", points: 5000, frequency: "daily", assigneeMode: "anyone", active: true }));
+    await assertSucceeds(addDoc(collection(db, "households/h1/choreTemplates"), { title: "Vacuum", icon: "🧹", points: 30, frequency: "weekly", assigneeMode: "anyone", active: true, schedule: { weekDay: 6 }, createdAt: 1, updatedAt: 1 }));
+    await assertFails(addDoc(collection(db, "households/h1/choreTemplates"), { title: "Vacuum", icon: "x".repeat(40), points: 30, frequency: "weekly", assigneeMode: "anyone", active: true }));
     await assertSucceeds(updateDoc(doc(db, "households/h1/choreTemplates/t1"), { active: false, updatedAt: 2 }));
     await assertSucceeds(deleteDoc(doc(db, "households/h1/choreTemplates/t1")));
   });

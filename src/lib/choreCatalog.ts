@@ -67,7 +67,7 @@ export const STARTER_CHORES: StarterChore[] = [
   { icon: "🧊", title: "Defrost Freezer", points: 40, frequency: "monthly", assigneeMode: "anyone" },
 ];
 
-/** Stored title for a chore. The emoji stays in the title so the deployed app keeps showing it. */
+/** Older format: emoji and name in one title string. Still used to recognise starter chores. */
 export function choreTitle(icon: string, name: string): string {
   return `${icon} ${name.trim()}`;
 }
@@ -84,4 +84,16 @@ export function splitChoreTitle(title: string): { icon: string; name: string } {
     }
   }
   return { icon: "✨", name: trimmed };
+}
+
+/** Icon and name of a chore, whether it stores them separately (new) or in the title (old). */
+export function choreParts(chore: { title: string; icon?: string }): { icon: string; name: string } {
+  if (chore.icon) return { icon: chore.icon, name: chore.title.trim() };
+  return splitChoreTitle(chore.title);
+}
+
+/** "🧹 Sweep": how a chore is written in history entries and notifications. */
+export function choreLabel(chore: { title: string; icon?: string }): string {
+  const { icon, name } = choreParts(chore);
+  return `${icon} ${name}`;
 }

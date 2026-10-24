@@ -32,7 +32,8 @@ export type Household = {
 
 export type ChoreTemplate = {
   id: string;
-  title: string;
+  title: string; // older chores have the emoji in the title, e.g. "🧹 Sweep"
+  icon?: string; // newer chores store the emoji separately
   points: number;
   frequency: Frequency;
   assigneeMode: AssigneeMode;

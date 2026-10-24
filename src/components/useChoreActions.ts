@@ -6,7 +6,7 @@ import { useReadyHousehold } from "@/src/components/HouseholdProvider";
 import { useFeedback } from "@/src/components/ui/Feedback";
 import { recordCompletion, recordSkip, recordUndo } from "@/src/lib/points";
 import { buildStatusByOccurrence, entryOccurrenceKey, occurrenceKey } from "@/src/lib/ledgerHelpers";
-import { splitChoreTitle } from "@/src/lib/choreCatalog";
+import { choreParts } from "@/src/lib/choreCatalog";
 import { friendlyError } from "@/src/lib/errors";
 import { track } from "@/src/lib/analytics";
 import type { ChoreTemplate, PointsLedgerEntry } from "@/src/lib/types";
@@ -58,7 +58,7 @@ export function useChoreActions() {
       });
       if (origin) celebrate({ ...origin, points: t.chore.points });
       track("chore_completed", { points: t.chore.points, frequency: t.chore.frequency });
-      const { name } = splitChoreTitle(t.chore.title);
+      const { name } = choreParts(t.chore);
       toast(`Nice! +${t.chore.points} for ${name}`, {
         action: { label: "Undo", onClick: () => undo(entry) },
       });
@@ -80,7 +80,7 @@ export function useChoreActions() {
         dayKey: t.dayKey,
         status: statusRef.current.get(key),
       });
-      toast(`Skipped ${splitChoreTitle(t.chore.title).name}`);
+      toast(`Skipped ${choreParts(t.chore).name}`);
     } catch (e) {
       toast(friendlyError(e), { tone: "error" });
     } finally {
