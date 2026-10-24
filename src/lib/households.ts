@@ -84,26 +84,32 @@ export async function createHousehold(params: {
     members: { [authUid]: true },
   };
 
-  // Create household
+  // Create household and link the profile first, so a failure below can't leave the user stuck
   await setDoc(hidRef, household);
-
-  // Now that we're a member, reserve an invite code for it
-  household.code = await claimInviteCode(hidRef.id, authUid);
-  await updateDoc(hidRef, { code: household.code });
-
-  // Sync user profile
   await updateDoc(userRef(authUid), {
     householdId: hidRef.id,
     updatedAt: now,
   });
+
+  // Now that we're a member, reserve an invite code for it
+  try {
+    household.code = await claimInviteCode(hidRef.id, authUid);
+    await updateDoc(hidRef, { code: household.code });
+  } catch {
+    // Invite codes refused (e.g. older security rules): ensureInviteCode fills it in later
+  }
 
   return household;
 }
 
 /** Finds the household for a code: the invite document, or (for old codes) a direct lookup. */
 async function householdIdForCode(code: string): Promise<string | null> {
-  const invite = await getDoc(inviteRef(code));
-  if (invite.exists()) return String(invite.get("householdId"));
+  try {
+    const invite = await getDoc(inviteRef(code));
+    if (invite.exists()) return String(invite.get("householdId"));
+  } catch {
+    // Invite codes not readable (older security rules): fall back to the direct lookup
+  }
   try {
     // Households created before invite documents existed. The security rules
     // no longer allow this query; it only helps until every household is migrated.

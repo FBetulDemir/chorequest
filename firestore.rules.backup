@@ -1,0 +1,41 @@
+// Backup of the Firestore rules that were live in the Firebase console on 2026-10-24,
+// before firestore.rules was first deployed. To roll back, paste this into
+// Firebase console → Firestore Database → Rules and publish.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Check if user belongs to a household
+    function getUserHousehold(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.householdId;
+    }
+
+    // Check if two users are in the same household
+    function inSameHousehold(uid) {
+      return signedIn() &&
+             getUserHousehold(request.auth.uid) == getUserHousehold(uid) &&
+             getUserHousehold(uid) != null;
+    }
+
+    match /users/{uid} {
+      // Read: allowed if it's your profile OR you're in the same household
+      allow read: if isSelf(uid) || inSameHousehold(uid);
+      // Write: only allowed for your own profile
+      allow write: if isSelf(uid);
+    }
+
+    match /households/{hid} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update: if signedIn();
+      allow delete: if signedIn();
+    }
+
+    match /households/{hid}/{document=**} {
+      allow read, write: if signedIn();
+    }
+  }
+}
